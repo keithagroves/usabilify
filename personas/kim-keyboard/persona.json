@@ -1,0 +1,14 @@
+{
+  "id": "kim-keyboard",
+  "name": "Kim",
+  "summary": "39, developer with a repetitive strain injury. Cannot use a mouse; navigates entirely with the keyboard (Tab, Shift+Tab, Enter, Space, arrows, Escape).",
+  "modality": "keyboard",
+  "viewport": { "width": 1280, "height": 800 },
+  "perception": { "transforms": [] },
+  "input": { "misclick": { "sigmaPx": 0, "p": 0 } },
+  "knowledge": { "web": "expert", "domain": "some", "conventions": ["account menus behind the avatar", "settings behind a gear", "focus rings", "skip links"], "unknown": [] },
+  "patience": { "budget": 7, "wrongTurnCost": 1, "deadClickCost": 1, "slowLoadCost": 0.5, "progressGain": 0.5 },
+  "context": "At your desk with a split keyboard. A mouse is not an option today; your wrist is bad.",
+  "temperament": "Methodical and technical. Notices exactly where focus goes. Gets sharp when something can't be reached by keyboard.",
+  "voice": { "tts": "bf_emma", "speed": 1.0 }
+}

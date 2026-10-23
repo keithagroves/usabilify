@@ -1,0 +1,11 @@
+{
+  "note": "Planted in fixtures/acme on purpose. Used to measure how many real problems the personas and analyst recover (plan section 9.4). This is a calibration target, not a real-world validity claim.",
+  "issues": [
+    { "id": "K1", "kind": "discoverability", "title": "Team members are only reachable from the avatar menu, under 'Organization'", "detail": "Not in the main nav and not linked from Settings, where most people look first.", "expect": ["alex-expert", "walt-novice", "priya-phone", "dana-deutan", "lou-lowvision"] },
+    { "id": "K2", "kind": "color-only-state", "title": "Notification toggles show on/off only by red vs green fill", "detail": "The knob never moves and there is no text, so red-green color blind users cannot tell the state.", "expect": ["dana-deutan", "lou-lowvision"] },
+    { "id": "K3", "kind": "color-only-error", "title": "A missing role on the invite form is shown only as a red border", "detail": "No message says what is wrong; the form just does not submit.", "expect": ["dana-deutan", "walt-novice", "alex-expert"] },
+    { "id": "K4", "kind": "low-contrast", "title": "The 'edit' link for the display name is tiny and very light grey", "detail": "11px #c9ccd3 on white.", "expect": ["lou-lowvision", "walt-novice", "priya-phone"] },
+    { "id": "K5", "kind": "feedback", "title": "Invite confirmation is a toast that disappears after 1.5 seconds", "detail": "Easy to miss; nothing else confirms the invite except the table row.", "expect": ["walt-novice"] },
+    { "id": "K6", "kind": "keyboard", "title": "The avatar menu is a div with a click handler: not focusable, no role", "detail": "Keyboard and screen reader users cannot reach Profile or Organization at all.", "expect": ["kim-keyboard", "ray-screenreader"] }
+  ]
+}

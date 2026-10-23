@@ -1,0 +1,6 @@
+node_modules/
+studies/*/runs/
+.DS_Store
+*.mp4
+monitor/alerts.jsonl
+evals/turing/guesses.jsonl

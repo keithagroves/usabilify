@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usabilify</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/player.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="side" id="side" aria-label="Sidebar">
+    <a class="brand" href="#/"><span class="logo" aria-hidden="true">◇</span> Usabilify</a>
+    <nav aria-label="Sections">
+      <a href="#/" data-nav="overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
+      <a href="#/runs" data-nav="runs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="4" cy="6" r=".5"/></svg>Runs</a>
+      <a href="#/sessions" data-nav="sessions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z"/></svg>Sessions</a>
+      <a href="#/issues" data-nav="issues"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4M12 17v.5"/></svg>Issues</a>
+      <a href="#/personas" data-nav="personas"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M17 14.5c2.3 0 4 1.5 4.5 4"/></svg>Personas</a>
+      <a href="#/monitor" data-nav="monitor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Monitor</a>
+      <a href="#/calibration" data-nav="calibration"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Calibration</a>
+    </nav>
+    <div class="side-foot">
+      <label for="study" class="k">Study</label>
+      <select id="study"></select>
+      <p class="meta" id="side-meta"></p>
+    </div>
+  </aside>
+  <div class="content">
+    <header class="topbar">
+      <button id="menu" class="menu-btn" aria-controls="side" aria-expanded="false" aria-label="Open navigation">☰</button>
+      <nav aria-label="Breadcrumb" id="crumbs" class="crumbs"></nav>
+    </header>
+    <main id="app" tabindex="-1"></main>
+  </div>
+</div>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<script src="/charts.js"></script>
+<script src="/table.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

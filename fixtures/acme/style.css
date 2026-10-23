@@ -1,0 +1,54 @@
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1f2430;background:#f5f6f8}
+a{color:#2457c5;text-decoration:none}
+.top{display:flex;align-items:center;gap:24px;height:56px;padding:0 20px;background:#fff;border-bottom:1px solid #e3e6ec;position:relative}
+.logo{font-weight:700;color:#1f2430}
+.nav{display:flex;gap:18px}
+.nav a{color:#4a5263;padding:4px 2px}
+.nav a.on{color:#1f2430;border-bottom:2px solid #2457c5}
+.right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.icon{font-size:20px;color:#4a5263}
+.avatar{width:32px;height:32px;border-radius:50%;background:#6b7a99;color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}
+.menu{position:absolute;right:16px;top:50px;background:#fff;border:1px solid #e3e6ec;border-radius:8px;box-shadow:0 8px 24px #0002;display:flex;flex-direction:column;min-width:170px;padding:6px;z-index:5}
+.menu[hidden]{display:none}
+.menu a{padding:8px 10px;border-radius:6px;color:#1f2430}
+.menu a:hover{background:#f0f2f6}
+main{max-width:1000px;margin:28px auto;padding:0 20px}
+h1{font-size:22px;margin:0 0 18px}
+h2{font-size:16px;margin:0 0 10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:22px}
+.card{background:#fff;border:1px solid #e3e6ec;border-radius:10px;padding:16px}
+.big{font-size:26px;font-weight:700}
+.muted{color:#6b7385;font-size:13px}
+.list{background:#fff;border:1px solid #e3e6ec;border-radius:10px}
+.row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid #eef0f4}
+.row:first-child{border-top:0}
+.tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #e3e6ec}
+.tabs a{padding:8px 14px;color:#4a5263;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs a.on{color:#1f2430;border-color:#2457c5}
+/* planted K2: on/off is red vs green fill only; knob never moves; no text */
+.toggle{width:44px;height:24px;border-radius:12px;border:0;position:relative;cursor:pointer;padding:0}
+.toggle::after{content:"";position:absolute;top:3px;left:13px;width:18px;height:18px;border-radius:50%;background:#fff}
+.toggle[aria-pressed=true]{background:#2fb344}
+.toggle[aria-pressed=false]{background:#d63939}
+.head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.plus{width:34px;height:34px;border-radius:8px;border:1px solid #cfd5df;background:#fff;font-size:20px;cursor:pointer;color:#2457c5}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #e3e6ec;border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:10px 14px;border-top:1px solid #eef0f4}
+th{background:#fafbfc;font-size:13px;color:#6b7385;font-weight:600;border-top:0}
+.pill{font-size:12px;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#3949ab}
+.modal-bg{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:10}
+.modal{background:#fff;border-radius:12px;padding:22px;width:400px}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label{font-size:13px;color:#4a5263}
+input,select{font:inherit;padding:8px 10px;border:1px solid #cfd5df;border-radius:6px;background:#fff}
+/* planted K3: the only sign of a missing role is a red border */
+.invalid{border-color:#d63939;box-shadow:0 0 0 1px #d63939}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+button.btn{font:inherit;padding:8px 14px;border-radius:6px;border:1px solid #cfd5df;background:#fff;cursor:pointer}
+button.primary{background:#2457c5;border-color:#2457c5;color:#fff}
+/* planted K4: the edit link is tiny and very light */
+.edit{font-size:11px;color:#c9ccd3;margin-left:8px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1f2430;color:#fff;padding:10px 16px;border-radius:8px;font-size:14px}
+.toast[hidden]{display:none}
+@media (max-width:600px){.nav{display:none}.top{gap:12px}main{margin:18px auto}.modal{width:92vw}}

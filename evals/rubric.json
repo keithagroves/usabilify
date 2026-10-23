@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "note": "Binary criteria for persona realism and grounding (plan §9.1). Change a definition → bump the version; judge results and labels record the version they used.",
+  "criteria": {
+    "realism": { "pass": "A reviewer reading the monologue cold would take it for a real participant's think-aloud.", "fail": "It reads like an AI, a narrator, or a UX consultant." },
+    "grounded": { "pass": "Everything the persona says about the screen at the stuck step is visible in what it perceived.", "fail": "It mentions something not in its view, or misreads what is there." },
+    "consistent": { "pass": "The persona never acts on information its impairment, modality or knowledge rules out.", "fail": "e.g. a red-green color-blind persona naming red/green state, a screen-reader user describing layout, a keyboard user clicking." },
+    "voice": { "pass": "Short first-person fragments in this persona's register; no design jargon.", "fail": "Long sentences, design vocabulary, or a voice that doesn't fit the persona." },
+    "giveup_earned": { "pass": "If it gave up, a person like this plausibly would have at that point (n/a otherwise).", "fail": "Gave up too early or too late for who they are." },
+    "finding_valid": { "pass": "The analyst's findings point at real problems a designer would act on.", "fail": "Findings are generic, wrong, or unsupported by the session." }
+  }
+}

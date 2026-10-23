@@ -1,0 +1,26 @@
+{
+  "name": "usabilify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "usabilify": "src/cli.ts"
+  },
+  "scripts": {
+    "u": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "playwright": "1.64.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.15",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pngjs": "^6.0.5",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "window": { "runs": 3 },
+  "signals": [
+    { "id": "task_failure_rate", "owner": "keith", "severity": "high", "kind": "rate", "per": "persona", "num": "not_completed", "threshold": 0.5, "why": "The product regressed (or is too hard) for this kind of user." },
+    { "id": "wrong_done_rate", "owner": "keith", "severity": "high", "kind": "rate", "per": "all", "num": "wrong_done", "threshold": 0.05, "why": "Users believe they finished when they didn't: the worst failure." },
+    { "id": "give_up_rate", "owner": "keith", "severity": "medium", "kind": "rate", "per": "persona", "num": "gave_up", "threshold": 0.4, "why": "The product is too hard before it is wrong." },
+    { "id": "unaware_of_success", "owner": "keith", "severity": "medium", "kind": "rate", "per": "all", "num": "unaware", "threshold": 0.2, "why": "Succeeded but didn't know it: missing feedback." },
+    { "id": "steps_vs_baseline_p95", "owner": "keith", "severity": "medium", "kind": "quantile", "metric": "stepsVsBaseline", "q": 0.95, "threshold": 3.0, "why": "Success that cost too much." },
+    { "id": "confusion_per_session", "owner": "keith", "severity": "low", "kind": "mean", "metric": "confusionEvents", "threshold": 4, "why": "Successful but painful sessions." },
+    { "id": "persona_inconsistent", "owner": "keith", "severity": "high", "kind": "judge", "criterion": "consistent", "threshold": 0.1, "why": "A persona is cheating or contradicting its impairment; its findings are suspect." },
+    { "id": "persona_ungrounded", "owner": "keith", "severity": "high", "kind": "judge", "criterion": "grounded", "threshold": 0.2, "why": "Monologue describes things the persona could not see." },
+    { "id": "session_error_rate", "owner": "keith", "severity": "high", "kind": "rate", "per": "all", "num": "error", "threshold": 0.05, "why": "The runner itself is failing." },
+    { "id": "cost_p95", "owner": "keith", "severity": "medium", "kind": "quantile", "metric": "costUsd", "q": 0.95, "threshold": 0.5, "why": "Runaway personas burning budget." }
+  ]
+}

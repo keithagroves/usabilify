@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Desk</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="logo" href="/dashboard">◆ Acme Desk</a>
+  <nav class="nav" aria-label="Main">
+    <a href="/dashboard">Dashboard</a>
+    <a href="/projects">Projects</a>
+    <a href="/reports">Reports</a>
+  </nav>
+  <div class="right">
+    <a class="icon" href="/settings" aria-label="Settings" title="Settings">⚙</a>
+    <!-- planted K6: the account menu is a div with a click handler: not focusable, no role -->
+    <div class="avatar" id="avatar">JD</div>
+    <div class="menu" id="menu" hidden>
+      <a href="/profile">Profile</a>
+      <a href="/org/members">Organization</a>
+      <a href="/billing">Billing</a>
+      <a href="#" id="signout">Sign out</a>
+    </div>
+  </div>
+</header>
+<main id="main"></main>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

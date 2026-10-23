@@ -1,0 +1,9 @@
+{
+  "id": "acme",
+  "name": "Acme Desk",
+  "baseUrl": "http://localhost:4400",
+  "launch": { "command": "npx tsx src/cli.ts fixture acme --port 4400", "ready": "http://localhost:4400/dashboard" },
+  "tasks": ["create-user", "weekly-emails-off", "display-name"],
+  "personas": ["alex-expert", "dana-deutan", "walt-novice", "priya-phone", "lou-lowvision", "kim-keyboard", "ray-screenreader"],
+  "block": ["google-analytics\\.com", "googletagmanager\\.com"]
+}

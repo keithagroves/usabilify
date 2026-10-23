@@ -1,0 +1,17 @@
+{
+  "id": "create-user",
+  "goal": "A new teammate, Sam Ortiz (sam@example.com), is starting today. Add them to the team so they can sign in.",
+  "start": "/dashboard",
+  "success": {
+    "kind": "js",
+    "expr": "(JSON.parse(localStorage.getItem('acme')||'{}').members||[]).some(m => m.email.toLowerCase() === 'sam@example.com')"
+  },
+  "baseline": {
+    "steps": 9,
+    "path": [
+      "/dashboard",
+      "/org/members"
+    ]
+  },
+  "maxSteps": 25
+}

@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Replay export</title>
+<style>html,body{margin:0;background:#0f1218;overflow:hidden}</style>
+<script src="/player.js"></script></head>
+<body><div id="host"></div>
+<script>
+(async () => {
+  const id = location.pathname.split("/").pop();
+  const lens = new URLSearchParams(location.search).get("lens") || "split";
+  const d = await (await fetch(`/api/session/${id}`)).json();
+  const p = new UsabPlayer(document.getElementById("host"), {
+    trace: d.trace, persona: d.persona, task: d.task, durations: d.voice ? d.voice.durations : {}, lens,
+    files: `/files/${id}`, findings: d.trace.findings,
+  });
+  window.__duration = p.duration;
+  window.__render = (t) => p.render(t);
+  // A key per frame: identical keys mean identical pixels, so the exporter can reuse the last frame.
+  window.__key = (t) => { const s = document.querySelector(".up-stage"); return s.innerHTML.length + ":" + s.innerHTML.replace(/\s+/g, ""); };
+  await p.render(0);
+  window.__ready = true;
+})();
+</script></body></html>

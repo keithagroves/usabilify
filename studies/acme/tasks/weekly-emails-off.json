@@ -1,0 +1,8 @@
+{
+  "id": "weekly-emails-off",
+  "goal": "You keep getting a weekly report email from this app and you don't want it any more. Turn it off.",
+  "start": "/dashboard",
+  "success": { "kind": "js", "expr": "JSON.parse(localStorage.getItem('acme')||'{}').notifications?.weekly === false" },
+  "baseline": { "steps": 3, "path": ["/dashboard", "/settings", "/settings/notifications"] },
+  "maxSteps": 20
+}

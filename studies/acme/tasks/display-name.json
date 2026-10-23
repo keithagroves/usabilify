@@ -1,0 +1,8 @@
+{
+  "id": "display-name",
+  "goal": "Your name shows up as \"Jordan Doe\" to everyone. Change it so it shows as \"J. Doe\" instead.",
+  "start": "/dashboard",
+  "success": { "kind": "js", "expr": "JSON.parse(localStorage.getItem('acme')||'{}').profile?.name === 'J. Doe'" },
+  "baseline": { "steps": 6, "path": ["/dashboard", "/profile"] },
+  "maxSteps": 20
+}

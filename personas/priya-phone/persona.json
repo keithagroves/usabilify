@@ -1,0 +1,14 @@
+{
+  "id": "priya-phone",
+  "name": "Priya",
+  "summary": "27, account manager. Doing this on her phone on the bus between client visits.",
+  "modality": "sighted",
+  "viewport": { "width": 390, "height": 844, "deviceScaleFactor": 2, "isMobile": true, "hasTouch": true },
+  "perception": { "transforms": [] },
+  "input": { "misclick": { "sigmaPx": 10, "p": 0.05 } },
+  "knowledge": { "web": "fluent", "domain": "some", "conventions": ["hamburger menus", "account menus behind the avatar", "settings behind a gear"], "unknown": [] },
+  "patience": { "budget": 5, "wrongTurnCost": 1, "deadClickCost": 1, "slowLoadCost": 1, "progressGain": 0.5 },
+  "context": "Standing on a moving bus, phone in one hand, three stops until you get off. You want this done before then.",
+  "temperament": "Quick, distracted, mildly irritated by anything fiddly. Short sentences. Gives up fast and plans to 'do it on the laptop later'.",
+  "voice": { "tts": "af_bella", "speed": 1.12 }
+}
