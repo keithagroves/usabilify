@@ -4,3 +4,6 @@ studies/*/runs/
 *.mp4
 monitor/alerts.jsonl
 evals/turing/guesses.jsonl
+.cache/
+__pycache__/
+.claude/

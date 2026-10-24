@@ -12,6 +12,7 @@ import { decks, turingResults } from "../turing.js";
 import type { Trace } from "../types.js";
 import { EVALS, readJson, ROOT } from "../util.js";
 import { appendFileSync } from "node:fs";
+import { draftPersona, personaStudies, previewPersona, previewVoice, savePersona, voiceSamples, VOICES } from "../personas.js";
 
 const UI = join(ROOT, "src/server/ui");
 const TYPES: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".wav": "audio/wav", ".mp4": "video/mp4", ".txt": "text/plain; charset=utf-8", ".json": "application/json", ".zip": "application/zip" };
@@ -109,6 +110,21 @@ function overview(study: string) {
   };
 }
 
+
+function personaStats(id: string, all: Trace[], tur: ReturnType<typeof turingResults>) {
+  const ss = all.filter((t) => t.persona === id);
+  const judged = ss.filter((t) => t.judge);
+  const rate = (c: string) => { const vs = judged.map((t) => t.judge!.verdicts[c]).filter(Boolean); return vs.length ? { pass: vs.filter((v) => v.pass).length, n: vs.length } : null; };
+  const words = ss.flatMap((t) => t.steps.map((s) => s.say)).filter(Boolean).map((l) => l.split(/\s+/).length).sort((a, b) => a - b);
+  return {
+    persona: loadPersona(id), studies: personaStudies(id), sessions: ss.length, completed: ss.filter((t) => t.outcome.kind === "completed").length,
+    gaveUp: ss.filter((t) => t.outcome.kind === "gave-up").length, suspect: ss.filter((t) => t.events.some((e) => e.type === "suspect")).length,
+    judge: { realism: rate("realism"), grounded: rate("grounded"), consistent: rate("consistent"), voice: rate("voice") },
+    turing: tur.byPersona[id] ?? null, medianWords: words.length ? words[Math.floor(words.length / 2)] : null,
+    lastRun: ss.map((t) => t.ts).sort().at(-1) ?? null,
+  };
+}
+
 async function route(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", "http://x");
   const p = url.pathname;
@@ -191,16 +207,42 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     return json(res, { ok: true });
   }
 
-  if (p === "/api/personas") {
+  if (p === "/api/personas" && req.method === "GET") {
     const all = listStudies().flatMap((st) => listRuns(st).flatMap((r) => loadSessions(st, r)));
     const tur = turingResults();
-    return json(res, listPersonas().map((id) => {
-      const ss = all.filter((t) => t.persona === id);
-      const judged = ss.filter((t) => t.judge);
-      const rate = (c: string) => { const vs = judged.map((t) => t.judge!.verdicts[c]).filter(Boolean); return vs.length ? { pass: vs.filter((v) => v.pass).length, n: vs.length } : null; };
-      return { persona: loadPersona(id), sessions: ss.length, completed: ss.filter((t) => t.outcome.kind === "completed").length, suspect: ss.filter((t) => t.events.some((e) => e.type === "suspect")).length, judge: { realism: rate("realism"), grounded: rate("grounded"), consistent: rate("consistent"), voice: rate("voice") }, turing: tur.byPersona[id] ?? null, voiceFile: existsSync(join(ROOT, "personas", id, "voice.md")) ? readFileSync(join(ROOT, "personas", id, "voice.md"), "utf8") : "" };
-    }));
+    return json(res, listPersonas().map((id) => personaStats(id, all, tur)));
   }
+  if (p === "/api/personas" && req.method === "POST") {
+    const b = await body(req);
+    try { return json(res, { ok: true, persona: savePersona(b, { create: true }) }); } catch (e) { return json(res, { error: (e as Error).message }, 400); }
+  }
+  m = p.match(/^\/api\/personas\/([a-z0-9-]+)$/);
+  if (m && req.method === "PUT") {
+    const b = await body(req);
+    try { return json(res, { ok: true, persona: savePersona(b, { create: false, id: m[1] }) }); } catch (e) { return json(res, { error: (e as Error).message }, 400); }
+  }
+  if (m && req.method === "GET") {
+    if (!listPersonas().includes(m[1])) return json(res, { error: "not found" }, 404);
+    const all = listStudies().flatMap((st) => listRuns(st).flatMap((r) => loadSessions(st, r).map((t) => ({ t, st, r }))));
+    const mine = all.filter((x) => x.t.persona === m![1]);
+    return json(res, { ...personaStats(m[1], all.map((x) => x.t), turingResults()), voiceSamples: voiceSamples(m[1]), sessionsList: mine.map((x) => ({ ...summary(x.t), study: x.st, run: x.r, ts: x.t.ts, durationMs: x.t.durationMs })) });
+  }
+  if (p === "/api/persona-meta") return json(res, { voices: VOICES, studies: listStudies().map((st) => ({ id: st, name: loadStudy(st).name, tasks: loadStudy(st).tasks })) });
+  if (p === "/api/persona-preview" && req.method === "POST") {
+    const b = await body(req);
+    try { return json(res, await previewPersona(b.persona, b.study ?? listStudies()[0], b.task)); } catch (e) { return json(res, { error: (e as Error).message }, 400); }
+  }
+  if (p === "/api/voice-preview" && req.method === "POST") {
+    const b = await body(req);
+    try { return json(res, { url: "/" + previewVoice(b.voice, Number(b.speed) || 1, String(b.text || "Hm. Where would that be?")) }); } catch (e) { return json(res, { error: (e as Error).message }, 400); }
+  }
+  if (p === "/api/persona-draft" && req.method === "POST") {
+    const b = await body(req);
+    if (!b.description || String(b.description).length < 8) return json(res, { error: "Describe the person in a sentence or two." }, 400);
+    try { return json(res, await draftPersona(String(b.description).slice(0, 2000))); } catch (e) { return json(res, { error: (e as Error).message }, 500); }
+  }
+  m = p.match(/^\/\.cache\/voice-preview\/([0-9a-f]+\.wav)$/);
+  if (m) return file(res, join(ROOT, ".cache", "voice-preview", m[1]), req);
 
   if (p === "/api/calibration") return json(res, { alignment: alignment(), turing: turingResults(), decks: decks().map((d: any) => ({ id: d.id, n: d.items.length })), rubric: rubric() });
   m = p.match(/^\/api\/turing\/([^/]+)$/);

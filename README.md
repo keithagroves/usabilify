@@ -1,8 +1,10 @@
 # Usabilify
 
-Synthetic usability testing. Realistic personas use your web app with real goals while thinking aloud. Each session is recorded as a structured trace. You review the failures in a dashboard and watch a narrated replay rendered afterwards, in the persona's own voice, with what they saw beside what was on screen.
+**Your tests pass. Your users still get stuck.**
 
-See [plan.md](plan.md) for the design and its review.
+Usabilify gives you a panel of AI beta testers, each a different kind of person, who try your web app on every build. A persona is not a prompt that says "act color blind": it is a model of a person with parts you can open. What it sees is transformed before the model sees it. What it can do is limited by its modality and its hands. What it knows is declared. How long it puts up with you is a budget it spends. Each session is recorded as a structured trace; you review the failures in a dashboard and watch a narrated replay in the persona's own voice, with what they saw beside what was on screen.
+
+Start with [OVERVIEW.md](OVERVIEW.md) for the pitch, [docs/persona-model.md](docs/persona-model.md) for what a persona is made of, and [plan.md](plan.md) for the design and its review.
 
 ## Quick start
 
@@ -20,6 +22,7 @@ Requirements: Node 22, Google Chrome, the `claude` CLI logged in (the personas r
 
 | command | what it does |
 |---|---|
+| `init <study> [--url <app>] [...]` | scaffold a study for any app: probes the URL, warns about sign-in and hash routing, asks for a first task; every answer can be a flag |
 | `run <study> [--tasks] [--personas] [--trials] [--brain]` | run sessions; `--brain ollama:qwen3-vl:4b` runs free and local (weaker) |
 | `grade <study> <run>` | recompute deterministic metrics (free) |
 | `analyze <study> <run>` | analyst pass and known-issue recall |
@@ -30,6 +33,10 @@ Requirements: Node 22, Google Chrome, the `claude` CLI logged in (the personas r
 | `turing --n 20` | build a real-vs-generated deck (needs `evals/turing/real.jsonl`) |
 | `monitor [<study>]` | evaluate signals over recent runs, append alerts |
 | `voice <session>` / `render <session> --lens split` | voice a session; export a narrated MP4 |
+
+## Personas in the dashboard
+
+The Personas page lists every persona with its input method, vision, device, patience, success rate and checks. **New persona** opens a form for who they are, how they use the app, vision, knowledge, patience, voice and which studies they belong to. It can draft the fields from a one-line description with Claude, and it previews the study's start page through the persona's eyes and plays sample lines in its voice. Edits apply to the next run; past sessions keep the persona hash they ran with.
 
 ## Layout
 
@@ -43,4 +50,10 @@ Requirements: Node 22, Google Chrome, the `claude` CLI logged in (the personas r
 
 ## Adding your own app
 
-Create `studies/<app>/study.json` with `baseUrl` (and an optional `launch` command), add tasks under `studies/<app>/tasks/`, and pick personas. A task's `success` is a JS expression, URL prefix, or text that must appear.
+```sh
+npx tsx src/cli.ts init myapp --url http://localhost:3000
+```
+
+It asks for a name, an optional launch command, which personas to use, and a first task (goal, start path, success check), then writes `studies/myapp/` with a README on writing tasks. Pass flags to skip the questions. A task's `success` is a JS expression, URL path prefix, or text that must appear on the page.
+
+Known limits on real apps: sessions start with no credentials (point the start path past any login, or use a build that auto-signs-in a test user), URL success checks read the path rather than the hash, and the screen-reader persona needs a DOM accessibility tree (Flutter needs semantics enabled).

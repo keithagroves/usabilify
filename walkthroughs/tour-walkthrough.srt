@@ -1,0 +1,59 @@
+1
+00:00:00,600 --> 00:00:08,879
+This is Usabilify. It tests your app with simulated people who think out loud, so you can see where real users would struggle.
+
+2
+00:00:09,331 --> 00:00:18,680
+The overview shows the latest run. Seven personas tried three tasks in a small admin app, and about three quarters of their attempts succeeded.
+
+3
+00:00:19,132 --> 00:00:28,832
+This grid shows where they failed. One persona can only use a keyboard, and another uses a screen reader. Both were blocked on two of the three tasks.
+
+4
+00:00:29,283 --> 00:00:35,183
+Below that, problems are merged across sessions, each one backed by the persona's own words.
+
+5
+00:00:35,632 --> 00:00:43,102
+The Runs page is the control table for every run. You can sort it, filter it, and tick two runs to compare them.
+
+6
+00:00:44,745 --> 00:00:51,825
+Comparing puts each persona and task next to the earlier run, so you can see what got better and what got worse.
+
+7
+00:00:52,276 --> 00:01:00,126
+Every cell opens a replay. This is Dana. She is red-green color blind, and she wants to turn off a weekly email.
+
+8
+00:01:00,577 --> 00:01:08,048
+On the left is the real screen. On the right is what Dana sees. To her, the red and green switches look the same.
+
+9
+00:01:08,499 --> 00:01:10,979
+Here is Dana, in her own words.
+
+10
+00:01:34,408 --> 00:01:41,408
+The setting did change. But Dana never knew whether it worked. That is the kind of problem a checklist misses.
+
+11
+00:01:41,860 --> 00:01:49,390
+Personas are more than prompts. Each one changes what the model sees, how it can act, and how long it will keep trying.
+
+12
+00:01:49,840 --> 00:01:55,760
+To add one, describe the person in a sentence, and Claude drafts the profile for you to check.
+
+13
+00:01:58,203 --> 00:02:03,053
+The preview opens your app through their eyes. Here, cataracts on a tablet.
+
+14
+00:02:03,505 --> 00:02:09,884
+Finally, the monitor watches every run, and raises an alert when one kind of user starts to fail.
+
+15
+00:02:10,335 --> 00:02:14,005
+Usabilify. Meet the users you don't have yet.

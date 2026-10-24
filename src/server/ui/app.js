@@ -40,9 +40,9 @@ async function route() {
   const [path, query] = (location.hash.slice(1) || "/").split("?");
   const q = new URLSearchParams(query ?? "");
   const parts = path.split("/").filter(Boolean);
-  const section = { run: "runs", session: "sessions" }[parts[0]] ?? parts[0] ?? "overview";
+  const section = { run: "runs", session: "sessions", persona: "personas" }[parts[0]] ?? parts[0] ?? "overview";
   setNav(section);
-  app.className = ["run", "session", "personas", "calibration"].includes(parts[0]) ? "legacy" : "";
+  app.className = ["run", "session", "calibration"].includes(parts[0]) ? "legacy" : "";
   app.innerHTML = `<p class="meta">Loading…</p>`;
   try {
     if (!studySel.options.length) await loadStudies();
@@ -53,7 +53,10 @@ async function route() {
     else if (parts[0] === "monitor") await monitorPage();
     else if (parts[0] === "run") { crumbs([["Runs", "#/runs"], [parts[2], ""]]); await runPage(parts[1], parts[2], q.get("baseline")); }
     else if (parts[0] === "session") await sessionPage(parts[1], q);
-    else if (parts[0] === "personas") { crumbs([["Personas", ""]]); await personasPage(); }
+    else if (parts[0] === "personas" && parts[1] === "new") await personaForm(null, q.get("from"));
+    else if (parts[0] === "personas") await personasPage();
+    else if (parts[0] === "persona" && parts[2] === "edit") await personaForm(parts[1]);
+    else if (parts[0] === "persona") await personaPage(parts[1]);
     else if (parts[0] === "calibration") { crumbs([["Calibration", ""]]); await calibrationPage(q); }
     else app.innerHTML = "<p>Not found.</p>";
   } catch (e) { app.innerHTML = `<p class="note">${esc(e.message)}</p>`; console.error(e); }
@@ -476,7 +479,9 @@ async function sessionPage(id, q) {
   document.getElementById("stuck")?.addEventListener("click", () => seekStep(t.metrics.stuckStep));
   const onKey = (e) => { if (e.target.closest("input,textarea")) return; if (e.key === " ") { e.preventDefault(); playing ? pause() : play(); } if (e.key === "ArrowRight") seek(time + 2); if (e.key === "ArrowLeft") seek(time - 2); };
   document.addEventListener("keydown", onKey);
-  cleanup = () => { pause(); document.removeEventListener("keydown", onKey); window.removeEventListener("resize", fit); };
+  // Read-only hook for the walkthrough recorder: the replay's clock, its segments and the voice track.
+  window.__replay = { get time() { return time; }, get playing() { return playing; }, segs, track: d.track ? `${d.trace.id}` : null };
+  cleanup = () => { pause(); delete window.__replay; document.removeEventListener("keydown", onKey); window.removeEventListener("resize", fit); };
   // Open at the stuck step (or the one asked for), not at the start.
   const startStep = q.get("step") ?? t.metrics?.stuckStep;
   if (startStep != null) seekStep(startStep); else draw();
@@ -512,19 +517,295 @@ function labelForm(d, id) {
 }
 
 // ---------- Personas ----------
+const DEVICES = {
+  desktop: { label: "Desktop 1280×800", v: { width: 1280, height: 800, deviceScaleFactor: 1, isMobile: false, hasTouch: false } },
+  laptop: { label: "Laptop 1440×900", v: { width: 1440, height: 900, deviceScaleFactor: 1, isMobile: false, hasTouch: false } },
+  zoom200: { label: "Desktop at 200% zoom", v: { width: 640, height: 400, deviceScaleFactor: 2, isMobile: false, hasTouch: false } },
+  phone: { label: "Phone 390×844", v: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true } },
+  tablet: { label: "Tablet 820×1180", v: { width: 820, height: 1180, deviceScaleFactor: 2, isMobile: true, hasTouch: true } },
+};
+const deviceOf = (v) => Object.entries(DEVICES).find(([, d]) => d.v.width === v.width && d.v.height === v.height && !!d.v.isMobile === !!v.isMobile)?.[0] ?? "custom";
+const deviceLabel = (v) => DEVICES[deviceOf(v)]?.label ?? `${v.width}×${v.height}${v.isMobile ? " touch" : ""}`;
+const visionText = (p) => p.modality === "screen-reader" ? "blind" : p.perception.transforms.map((x) => x.type === "cvd" ? `${x.kind}${x.severity < 1 ? ` ${x.severity}` : ""}` : x.type === "blur" ? `blur ${x.sigma}px` : `contrast ×${x.amount}`).join(", ") || "typical";
+const MODALITY = { sighted: "Mouse or touch", keyboard: "Keyboard only", "screen-reader": "Screen reader" };
+const passRate = (r) => (r ? `${r.pass}/${r.n}` : "–");
+
 async function personasPage() {
+  crumbs([["Personas", ""]]);
   const ps = await api("/api/personas");
-  const rate = (r) => (r ? `${r.pass}/${r.n}` : "–");
-  app.innerHTML = `<h1>Personas</h1><p class="meta">Each persona is a perception transform, an input modality, a knowledge level, a patience model and a voice, not just a prompt.</p>
-  <div class="cards">${ps.map(({ persona: p, ...s }) => `<div class="panel">
-    <h3>${esc(p.name)} <span class="chip">${esc(p.id)}</span>${p.role === "control" ? `<span class="chip">control</span>` : ""}</h3>
-    <p>${esc(p.summary)}</p>
-    <p class="meta">${esc(p.context)}</p>
-    <p><span class="chip">${esc(p.modality)}</span>${p.perception.transforms.map((x) => `<span class="chip">${esc(x.type === "cvd" ? `${x.kind} ${x.severity}` : x.type === "blur" ? `blur ${x.sigma}px` : `contrast ×${x.amount}`)}</span>`).join("")}<span class="chip">${p.viewport.width}×${p.viewport.height}${p.viewport.isMobile ? " phone" : ""}</span><span class="chip">web: ${esc(p.knowledge.web)}</span><span class="chip">patience ${p.patience.budget}</span><span class="chip">voice ${esc(p.voice.tts)}</span></p>
-    <p><span class="stat"><span class="k">Sessions</span><br><span class="big">${s.sessions}</span></span><span class="stat"><span class="k">Completed</span><br><span class="big">${s.completed}</span></span><span class="stat"><span class="k">Flagged</span><br><span class="big">${s.suspect}</span></span></p>
-    <p class="meta">Judge pass: realism ${rate(s.judge.realism)} · grounded ${rate(s.judge.grounded)} · consistent ${rate(s.judge.consistent)} · voice ${rate(s.judge.voice)}<br>Turing: ${s.turing ? `${s.turing.caught}/${s.turing.n} lines caught as generated` : "no guesses yet"}</p>
-    <details><summary>Voice samples</summary><pre>${esc(s.voiceFile)}</pre></details>
-  </div>`).join("")}</div>`;
+  const studies = [...new Set(ps.flatMap((x) => x.studies))].sort();
+  app.innerHTML = `<div class="pagehead"><div><h1>Personas</h1><p class="meta">Each persona is a way of perceiving, an input method, a knowledge level, a patience budget and a voice. Click one to see its sessions and checks.</p></div>
+    <div class="row"><a class="btn primary" href="#/personas/new">＋ New persona</a></div></div><div id="t-personas"></div>`;
+  MasterTable(document.getElementById("t-personas"), {
+    id: "personas", noun: "personas", label: "personas", rows: ps, rowId: (r) => r.persona.id,
+    href: (r) => `#/persona/${r.persona.id}`, sort: { key: "name", dir: "asc" },
+    search: (r) => `${r.persona.name} ${r.persona.id} ${r.persona.summary} ${visionText(r.persona)} ${r.persona.voice.tts}`,
+    filters: [
+      { key: "modality", label: "Input", options: Object.entries(MODALITY), test: (r, v) => r.persona.modality === v },
+      { key: "vision", label: "Vision", options: [["typical", "Typical"], ["cvd", "Color vision deficiency"], ["low", "Low vision / blur"], ["blind", "Blind"]], test: (r, v) => v === "typical" ? r.persona.modality !== "screen-reader" && !r.persona.perception.transforms.length : v === "cvd" ? r.persona.perception.transforms.some((x) => x.type === "cvd") : v === "low" ? r.persona.perception.transforms.some((x) => x.type === "blur") : r.persona.modality === "screen-reader" },
+      { key: "study", label: "Study", options: studies.map((x) => [x, x]), test: (r, v) => r.studies.includes(v) },
+    ],
+    columns: [
+      { key: "name", label: "Persona", value: (r) => r.persona.name, render: (r) => `${esc(r.persona.name)}${r.persona.role === "control" ? ` <span class="chip">control</span>` : ""}` },
+      { key: "who", label: "Who", wrap: true, value: (r) => r.persona.summary, render: (r) => `<span class="clamp2" title="${esc(r.persona.summary)}">${esc(r.persona.summary)}</span>` },
+      { key: "modality", label: "Input", value: (r) => r.persona.modality, render: (r) => esc(MODALITY[r.persona.modality]) },
+      { key: "vision", label: "Vision", value: (r) => visionText(r.persona), render: (r) => esc(visionText(r.persona)) },
+      { key: "device", label: "Device", value: (r) => deviceLabel(r.persona.viewport), render: (r) => esc(deviceLabel(r.persona.viewport)) },
+      { key: "web", label: "Web skill", value: (r) => ({ novice: 0, fluent: 1, expert: 2 })[r.persona.knowledge.web], render: (r) => esc(r.persona.knowledge.web) },
+      { key: "patience", label: "Patience", num: true, value: (r) => r.persona.patience.budget, render: (r) => r.persona.patience.budget },
+      { key: "sessions", label: "Sessions", num: true },
+      { key: "success", label: "Success", num: true, value: (r) => (r.sessions ? r.completed / r.sessions : -1), render: (r) => r.sessions ? `<span class="bar-cell"><span class="track" aria-hidden="true"><div style="width:${(r.completed / r.sessions) * 100}%"></div></span>${Math.round((r.completed / r.sessions) * 100)}%</span>` : "–" },
+      { key: "gaveUp", label: "Gave up", num: true },
+      { key: "checks", label: "Persona checks", value: (r) => r.suspect, render: (r) => r.sessions ? (r.suspect ? `<span class="badge serious">! ${r.suspect} flagged</span>` : `<span class="badge good">✓ none flagged</span>`) : `<span class="meta">no sessions</span>` },
+      { key: "realism", label: "Realism", num: true, title: "judge pass / judged", value: (r) => (r.judge.realism ? r.judge.realism.pass / r.judge.realism.n : null), render: (r) => passRate(r.judge.realism) },
+      { key: "voice", label: "Voice", value: (r) => r.persona.voice.tts, render: (r) => `<code>${esc(r.persona.voice.tts)}</code>` },
+      { key: "studies", label: "Studies", value: (r) => r.studies.join(","), render: (r) => r.studies.map((x) => `<span class="chip">${esc(x)}</span>`).join("") || `<span class="meta">none</span>` },
+      { key: "lastRun", label: "Last run", value: (r) => (r.lastRun ? Date.parse(r.lastRun) : null), render: (r) => (r.lastRun ? shortTs(r.lastRun) : "–") },
+    ],
+  });
+}
+
+async function personaPage(id) {
+  const d = await api(`/api/personas/${id}`);
+  const p = d.persona;
+  crumbs([["Personas", "#/personas"], [p.name, ""]]);
+  const T = p.perception.transforms;
+  const dl = (rows) => `<dl class="props">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  app.innerHTML = `
+    <div class="pagehead"><div><h1>${esc(p.name)} ${p.role === "control" ? `<span class="chip">control</span>` : ""}</h1><p>${esc(p.summary)}</p><p class="meta"><code>${esc(p.id)}</code> · in ${d.studies.map(esc).join(", ") || "no studies"}</p></div>
+      <div class="row"><a class="btn" href="#/personas/new?from=${esc(p.id)}">Duplicate</a><a class="btn primary" href="#/persona/${esc(p.id)}/edit">Edit</a></div></div>
+    <section class="tiles" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+      <div class="tile"><div class="label">Sessions</div><div class="value">${d.sessions}</div></div>
+      <div class="tile"><div class="label">Task success</div><div class="value">${d.sessions ? Math.round((d.completed / d.sessions) * 100) + "%" : "–"}</div><div class="sub">${d.completed} of ${d.sessions}</div></div>
+      <div class="tile"><div class="label">Gave up</div><div class="value">${d.gaveUp}</div></div>
+      <div class="tile"><div class="label">Persona flagged</div><div class="value">${d.suspect}</div><div class="sub">by the analyst for acting out of character</div></div>
+      <div class="tile"><div class="label">Words per line</div><div class="value">${d.medianWords ?? "–"}</div><div class="sub">median; real think-aloud is short</div></div>
+    </section>
+    <div class="dash" style="margin-top:16px">
+      <section class="card span-6"><div class="card-h"><h2>Definition</h2></div>
+        ${dl([
+          ["Situation", esc(p.context)], ["Temperament", esc(p.temperament)],
+          ["Input", esc(MODALITY[p.modality])], ["Device", esc(deviceLabel(p.viewport))],
+          ["Vision", esc(visionText(p))], ["Pointer", p.modality === "sighted" ? `aim error σ ${p.input.misclick.sigmaPx}px, slips ${Math.round(p.input.misclick.p * 100)}%` : "–"],
+          ["Web skill", esc(p.knowledge.web)], ["This kind of app", esc(p.knowledge.domain)],
+          ["Used to", p.knowledge.conventions.map((c) => `<span class="chip">${esc(c)}</span>`).join("") || "–"],
+          ["Doesn't know", p.knowledge.unknown.map((c) => `<span class="chip">${esc(c)}</span>`).join("") || "–"],
+          ["Patience", `budget ${p.patience.budget} · wrong turn −${p.patience.wrongTurnCost} · dead click −${p.patience.deadClickCost} · slow load −${p.patience.slowLoadCost} · progress +${p.patience.progressGain}`],
+          ["Voice", `<code>${esc(p.voice.tts)}</code> at ${p.voice.speed}×`],
+        ])}</section>
+      <section class="card span-6"><div class="card-h"><h2>What ${esc(p.name)} sees</h2><span class="meta" id="pv-where"></span></div>
+        <div id="pv" class="pv"><button type="button" id="pv-go">Show the study's start page through ${esc(p.name)}'s eyes</button></div>
+        <h2 style="margin:16px 0 8px">Voice</h2>
+        <ul class="samples">${d.voiceSamples.split("\n").filter(Boolean).map((l) => `<li><button type="button" class="play-line" data-line="${esc(l)}" aria-label="Play">▶</button> “${esc(l)}”</li>`).join("") || `<li class="meta">No sample lines.</li>`}</ul>
+        <p class="meta">Sample lines are authored, not from real sessions. Replace them with real think-aloud excerpts when you have them.</p></section>
+      <section class="card span-12"><div class="card-h"><h2>Sessions</h2><span class="meta">judge: realism ${passRate(d.judge.realism)} · grounded ${passRate(d.judge.grounded)} · consistent ${passRate(d.judge.consistent)} · voice ${passRate(d.judge.voice)} · Turing ${d.turing ? `${d.turing.caught}/${d.turing.n} caught` : "no guesses"}</span></div><div id="t-psess"></div></section>
+    </div>`;
+  document.getElementById("pv-go").onclick = () => showPreview(p, document.getElementById("pv"), document.getElementById("pv-where"));
+  wireVoiceButtons(app, p.voice);
+  MasterTable(document.getElementById("t-psess"), {
+    id: "persona-sessions", noun: "sessions", rows: d.sessionsList, rowId: (r) => r.id, empty: "This persona hasn't run yet.",
+    href: (r) => `#/session/${r.id}${r.metrics?.stuckStep != null ? `?step=${r.metrics.stuckStep}` : ""}`, sort: { key: "ts", dir: "desc" },
+    search: (r) => `${r.task} ${r.run} ${r.outcome.reason}`,
+    columns: [
+      { key: "task", label: "Task" },
+      { key: "outcome", label: "Outcome", value: (r) => r.outcome.kind, render: (r) => outcomeBadge(r) },
+      { key: "steps", label: "Steps", num: true, value: (r) => r.metrics?.steps, render: (r) => r.metrics?.steps ?? "–" },
+      { key: "reason", label: "Last words", wrap: true, value: (r) => r.outcome.reason, render: (r) => `<i>“${esc(r.outcome.reason)}”</i>` },
+      { key: "ts", label: "Started", value: (r) => Date.parse(r.ts), render: (r) => shortTs(r.ts) },
+      { key: "run", label: "Run", render: (r) => `<code>${esc(r.run)}</code>` },
+    ],
+  });
+}
+
+async function showPreview(persona, box, where, study) {
+  box.innerHTML = `<p class="meta">Opening the app as ${esc(persona.name || "this persona")}…</p>`;
+  try {
+    const r = await api("/api/persona-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ persona, study }) });
+    if (where) where.textContent = r.url;
+    box.innerHTML = r.buffer != null
+      ? `<div class="pv-pair ${persona.viewport.width > persona.viewport.height ? "wide" : ""}"><figure><figcaption>On screen</figcaption><img alt="The page as rendered" src="data:image/png;base64,${r.real}"></figure><figure><figcaption>What the screen reader says</figcaption><pre class="buffer">${esc(r.buffer)}</pre></figure></div>`
+      : `<div class="pv-pair ${persona.viewport.width > persona.viewport.height ? "wide" : ""}"><figure><figcaption>On screen</figcaption><img alt="The page as rendered" src="data:image/png;base64,${r.real}"></figure><figure><figcaption>What ${esc(persona.name || "they")} see${persona.name ? "s" : ""}</figcaption><img alt="The page as this persona perceives it" src="data:image/png;base64,${r.view}"></figure></div>`;
+  } catch (e) { box.innerHTML = `<p class="note">${esc(e.message)}</p>`; }
+}
+
+function wireVoiceButtons(root, voice) {
+  root.querySelectorAll(".play-line").forEach((b) => (b.onclick = async () => {
+    const v = typeof voice === "function" ? voice() : voice;
+    b.disabled = true; b.textContent = "…";
+    try { const r = await api("/api/voice-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ voice: v.tts, speed: v.speed, text: b.dataset.line }) }); await new Audio(r.url).play(); }
+    catch (e) { alert(e.message); }
+    finally { b.disabled = false; b.textContent = "▶"; }
+  }));
+}
+
+const NEW_PERSONA = {
+  id: "", name: "", role: "persona", summary: "", context: "", temperament: "",
+  modality: "sighted", viewport: { ...DEVICES.desktop.v }, perception: { transforms: [] }, input: { misclick: { sigmaPx: 4, p: 0.02 } },
+  knowledge: { web: "fluent", domain: "none", conventions: ["settings behind a gear"], unknown: [] },
+  patience: { budget: 7, wrongTurnCost: 1, deadClickCost: 1, slowLoadCost: 0.5, progressGain: 0.5 }, voice: { tts: "af_heart", speed: 1 },
+};
+const slug = (s) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+
+async function personaForm(id, fromId) {
+  const meta = await api("/api/persona-meta");
+  const editing = !!id;
+  const src = id || fromId ? await api(`/api/personas/${id || fromId}`) : null;
+  let p = structuredClone(src ? src.persona : NEW_PERSONA);
+  let samples = src ? src.voiceSamples : "";
+  let studies = editing ? src.studies : fromId ? src.studies : meta.studies.map((s) => s.id);
+  if (fromId) { p.name = `${p.name} (copy)`; p.id = slug(p.name); }
+  crumbs(editing ? [["Personas", "#/personas"], [p.name, `#/persona/${id}`], ["Edit", ""]] : [["Personas", "#/personas"], ["New persona", ""]]);
+  const T = (type) => p.perception.transforms.find((x) => x.type === type);
+  const opt = (pairs, cur) => pairs.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(t)}</option>`).join("");
+  app.innerHTML = `
+    <div class="pagehead"><div><h1>${editing ? `Edit ${esc(p.name)}` : "New persona"}</h1><p class="meta">A persona changes what the model perceives and how it can act, not just how it talks. Changes apply to the next run; past sessions keep the version they ran with.</p></div></div>
+    <form id="pf" class="pform" novalidate>
+      <div class="pform-main">
+        ${editing ? "" : `<fieldset class="card"><legend>Start from a description <span class="meta">(optional)</span></legend>
+          <label for="desc">Describe the person in a sentence or two. Claude drafts the fields below for you to check.</label>
+          <textarea id="desc" rows="2" placeholder="e.g. A 66-year-old nurse with cataracts who mostly uses an iPad and gets flustered by pop-ups"></textarea>
+          <div class="row"><button type="button" id="draft">Draft with Claude</button><span class="meta" id="draft-status" aria-live="polite"></span></div></fieldset>`}
+        <fieldset class="card"><legend>Who they are</legend>
+          <div class="f2"><label>Name<input name="name" required value="${esc(p.name)}"></label>
+            <label>Id<input name="id" required pattern="[a-z0-9][a-z0-9-]{1,40}" value="${esc(p.id)}" ${editing ? "readonly" : ""} aria-describedby="id-help"><span class="help" id="id-help">${editing ? "Ids can't change; duplicate instead." : "Lowercase letters, digits and dashes. Filled from the name."}</span></label></div>
+          <label>Summary<textarea name="summary" rows="2" required placeholder="Age, job, how they use computers.">${esc(p.summary)}</textarea></label>
+          <label>Situation right now<textarea name="context" rows="2" placeholder="Second person: where they are, how much time they have, what's on their mind.">${esc(p.context)}</textarea></label>
+          <label>Temperament and way of talking<textarea name="temperament" rows="2" placeholder="How they react and how they sound when thinking aloud.">${esc(p.temperament)}</textarea></label>
+          <label class="inline"><input type="checkbox" name="control" ${p.role === "control" ? "checked" : ""}> Control persona (the baseline others are compared with)</label>
+        </fieldset>
+        <fieldset class="card"><legend>How they use the app</legend>
+          <div class="seg" role="radiogroup" aria-label="Input">${Object.entries(MODALITY).map(([v, t]) => `<label><input type="radio" name="modality" value="${v}" ${p.modality === v ? "checked" : ""}> ${esc(t)}</label>`).join("")}</div>
+          <div class="f2"><label>Device<select name="device">${opt([...Object.entries(DEVICES).map(([k, d]) => [k, d.label]), ["custom", "Custom size"]], deviceOf(p.viewport))}</select></label>
+            <div class="f2" id="custom-size"><label>Width<input name="vw" type="number" min="320" max="2560" value="${p.viewport.width}"></label><label>Height<input name="vh" type="number" min="320" max="2000" value="${p.viewport.height}"></label></div></div>
+          <div class="f2" data-only="sighted"><label>Aim error <output name="o-sigma">${p.input.misclick.sigmaPx}px</output><input name="sigma" type="range" min="0" max="14" step="1" value="${p.input.misclick.sigmaPx}"><span class="help">How far a click lands from where they aim. Mouse 2–5, thumb 8–11.</span></label>
+            <label>Slips <output name="o-slip">${Math.round(p.input.misclick.p * 100)}%</output><input name="slip" type="range" min="0" max="0.1" step="0.01" value="${p.input.misclick.p}"><span class="help">Chance a click lands on a neighbouring target.</span></label></div>
+        </fieldset>
+        <fieldset class="card" data-hide="screen-reader"><legend>Vision</legend>
+          <div class="f2"><label>Color vision<select name="cvd">${opt([["", "Typical"], ["deutan", "Deuteranopia (red-green, most common)"], ["protan", "Protanopia (red-green)"], ["tritan", "Tritanopia (blue-yellow)"]], T("cvd")?.kind ?? "")}</select></label>
+            <label>Severity <output name="o-sev">${T("cvd")?.severity ?? 1}</output><input name="sev" type="range" min="0.1" max="1" step="0.1" value="${T("cvd")?.severity ?? 1}"></label></div>
+          <div class="f2"><label>Blur <output name="o-blur">${T("blur")?.sigma ?? 0}px</output><input name="blur" type="range" min="0" max="3" step="0.1" value="${T("blur")?.sigma ?? 0}"><span class="help">0.4–0.8 for ageing eyes; 1.5–2.5 for low vision.</span></label>
+            <label>Contrast <output name="o-contrast">×${T("contrast")?.amount ?? 1}</output><input name="contrast" type="range" min="0.3" max="1" step="0.05" value="${T("contrast")?.amount ?? 1}"><span class="help">Below 1 makes faint things fainter.</span></label></div>
+        </fieldset>
+        <fieldset class="card"><legend>What they know</legend>
+          <div class="f2"><label>With the web<select name="web">${opt([["novice", "Beginner"], ["fluent", "Comfortable"], ["expert", "Very experienced"]], p.knowledge.web)}</select></label>
+            <label>With this kind of app<select name="domain">${opt([["none", "Never used one"], ["some", "Used something like it"], ["expert", "Uses lots of them"]], p.knowledge.domain)}</select></label></div>
+          <div class="f2"><label>Used to (one per line)<textarea name="conventions" rows="3" placeholder="settings behind a gear">${esc(p.knowledge.conventions.join("\n"))}</textarea></label>
+            <label>Doesn't know (one per line)<textarea name="unknown" rows="3" placeholder="that a plus sign adds something">${esc(p.knowledge.unknown.join("\n"))}</textarea></label></div>
+        </fieldset>
+        <fieldset class="card"><legend>Patience</legend>
+          <label>Budget <output name="o-budget">${p.patience.budget}</output><input name="budget" type="range" min="3" max="12" step="0.5" value="${p.patience.budget}"><span class="help">Wrong turns, dead clicks and slow loads spend it; progress gives a little back. They're told how they feel, never the number.</span></label>
+          <details><summary>Costs</summary><div class="f4">
+            <label>Wrong turn<input name="wrongTurnCost" type="number" step="0.1" min="0" value="${p.patience.wrongTurnCost}"></label>
+            <label>Dead click<input name="deadClickCost" type="number" step="0.1" min="0" value="${p.patience.deadClickCost}"></label>
+            <label>Slow load<input name="slowLoadCost" type="number" step="0.1" min="0" value="${p.patience.slowLoadCost}"></label>
+            <label>Progress gain<input name="progressGain" type="number" step="0.1" min="0" value="${p.patience.progressGain}"></label></div></details>
+        </fieldset>
+        <fieldset class="card"><legend>Voice</legend>
+          <div class="f2"><label>Voice<select name="tts">${opt(meta.voices, p.voice.tts)}</select></label>
+            <label>Speed <output name="o-speed">${p.voice.speed}×</output><input name="speed" type="range" min="0.8" max="1.25" step="0.01" value="${p.voice.speed}"></label></div>
+          <label>Sample lines (one per line; the actor sees these as style, not script)<textarea name="samples" rows="5" placeholder="Hm. Where would that be?">${esc(samples)}</textarea></label>
+          <div class="row"><button type="button" class="play-line" id="play-sample" data-line="">▶</button><span class="meta">Play the first sample line in this voice</span></div>
+        </fieldset>
+        <fieldset class="card"><legend>Studies</legend>
+          ${meta.studies.map((s) => `<label class="inline"><input type="checkbox" name="study" value="${esc(s.id)}" ${studies.includes(s.id) ? "checked" : ""}> ${esc(s.name)} <span class="meta">(${s.tasks.length} tasks)</span></label>`).join("")}
+        </fieldset>
+        <div class="row savebar"><button class="primary" type="submit">${editing ? "Save changes" : "Create persona"}</button><a class="btn" href="${editing ? `#/persona/${esc(id)}` : "#/personas"}">Cancel</a><span id="save-status" class="meta" role="status"></span></div>
+      </div>
+      <aside class="pform-side"><div class="card sticky">
+        <div class="card-h"><h2>Preview</h2><span class="meta" id="pv-where"></span></div>
+        <label>Study<select id="pv-study">${opt(meta.studies.map((s) => [s.id, s.name]), STUDY || meta.studies[0]?.id)}</select></label>
+        <div id="pv" class="pv"><p class="meta">The preview opens the study's start page with this device and vision. It updates as you change them.</p></div>
+        <button type="button" id="pv-go">Refresh preview</button>
+      </div></aside>
+    </form>`;
+  const f = document.getElementById("pf");
+  const val = (n) => f.elements[n].value;
+  const lines = (n) => val(n).split("\n").map((x) => x.trim()).filter(Boolean);
+  const read = () => {
+    const dev = val("device"), modality = f.querySelector("[name=modality]:checked").value;
+    const viewport = dev === "custom" ? { width: Number(val("vw")), height: Number(val("vh")), deviceScaleFactor: 1, isMobile: false, hasTouch: false } : { ...DEVICES[dev].v };
+    const transforms = [];
+    if (modality !== "screen-reader") {
+      if (val("cvd")) transforms.push({ type: "cvd", kind: val("cvd"), severity: Number(val("sev")) });
+      if (Number(val("blur")) > 0) transforms.push({ type: "blur", sigma: Number(val("blur")) });
+      if (Number(val("contrast")) < 1) transforms.push({ type: "contrast", amount: Number(val("contrast")) });
+    }
+    return {
+      id: val("id").trim(), name: val("name").trim(), role: f.elements.control.checked ? "control" : "persona",
+      summary: val("summary").trim(), context: val("context").trim(), temperament: val("temperament").trim(), modality, viewport,
+      perception: { transforms }, input: { misclick: modality === "sighted" ? { sigmaPx: Number(val("sigma")), p: Number(val("slip")) } : { sigmaPx: 0, p: 0 } },
+      knowledge: { web: val("web"), domain: val("domain"), conventions: lines("conventions"), unknown: lines("unknown") },
+      patience: { budget: Number(val("budget")), wrongTurnCost: Number(val("wrongTurnCost")), deadClickCost: Number(val("deadClickCost")), slowLoadCost: Number(val("slowLoadCost")), progressGain: Number(val("progressGain")) },
+      voice: { tts: val("tts"), speed: Number(val("speed")) },
+    };
+  };
+  const sync = () => {
+    const m = f.querySelector("[name=modality]:checked").value;
+    f.querySelectorAll("[data-hide]").forEach((el) => { el.disabled = el.dataset.hide === m; el.hidden = el.dataset.hide === m; });
+    f.querySelectorAll("[data-only]").forEach((el) => (el.hidden = el.dataset.only !== m));
+    document.getElementById("custom-size").hidden = val("device") !== "custom";
+    f.elements["o-sigma"].value = `${val("sigma")}px`; f.elements["o-slip"].value = `${Math.round(Number(val("slip")) * 100)}%`;
+    f.elements["o-sev"].value = val("sev"); f.elements["o-blur"].value = `${val("blur")}px`; f.elements["o-contrast"].value = `×${val("contrast")}`;
+    f.elements["o-budget"].value = val("budget"); f.elements["o-speed"].value = `${val("speed")}×`;
+    f.elements.sev.disabled = !val("cvd");
+    document.getElementById("play-sample").dataset.line = lines("samples")[0] || "Hm. Where would that be?";
+  };
+  let pvTimer = 0;
+  const preview = () => { clearTimeout(pvTimer); pvTimer = setTimeout(() => showPreview({ ...read(), name: val("name") || "they" }, document.getElementById("pv"), document.getElementById("pv-where"), document.getElementById("pv-study").value), 600); };
+  f.addEventListener("input", (e) => {
+    sync();
+    if (e.target.name === "name" && !editing && !f.elements.id.dataset.touched) f.elements.id.value = slug(val("name"));
+    if (e.target.name === "id") f.elements.id.dataset.touched = "1";
+    if (e.target.name === "device") {
+      // Thumbs are less precise than a mouse: move the aim error to a sensible default when switching (still editable).
+      const touch = DEVICES[val("device")]?.v.hasTouch, sig = Number(val("sigma"));
+      if (touch && sig < 7) f.elements.sigma.value = 9; else if (!touch && sig > 6) f.elements.sigma.value = 4;
+      sync();
+    }
+    if (["device", "vw", "vh", "cvd", "sev", "blur", "contrast", "modality"].includes(e.target.name)) preview();
+  });
+  document.getElementById("pv-study").onchange = preview;
+  document.getElementById("pv-go").onclick = preview;
+  wireVoiceButtons(f, () => ({ tts: val("tts"), speed: Number(val("speed")) }));
+  sync(); preview();
+
+  const fill = (np, smp) => {
+    p = np;
+    const set = (n, v) => { if (f.elements[n]) f.elements[n].value = v ?? ""; };
+    set("name", np.name); set("id", np.id); set("summary", np.summary); set("context", np.context); set("temperament", np.temperament);
+    f.elements.control.checked = np.role === "control";
+    f.querySelectorAll("[name=modality]").forEach((r) => (r.checked = r.value === np.modality));
+    set("device", deviceOf(np.viewport)); set("vw", np.viewport.width); set("vh", np.viewport.height);
+    set("sigma", np.input?.misclick?.sigmaPx ?? 4); set("slip", np.input?.misclick?.p ?? 0.02);
+    const t = (ty) => (np.perception?.transforms ?? []).find((x) => x.type === ty);
+    set("cvd", t("cvd")?.kind ?? ""); set("sev", t("cvd")?.severity ?? 1); set("blur", t("blur")?.sigma ?? 0); set("contrast", t("contrast")?.amount ?? 1);
+    set("web", np.knowledge?.web); set("domain", np.knowledge?.domain); set("conventions", (np.knowledge?.conventions ?? []).join("\n")); set("unknown", (np.knowledge?.unknown ?? []).join("\n"));
+    for (const k of ["budget", "wrongTurnCost", "deadClickCost", "slowLoadCost", "progressGain"]) set(k, np.patience?.[k]);
+    set("tts", np.voice?.tts); set("speed", np.voice?.speed ?? 1); if (smp != null) set("samples", smp);
+    sync(); preview();
+  };
+  document.getElementById("draft")?.addEventListener("click", async () => {
+    const ds = document.getElementById("draft-status"), b = document.getElementById("draft");
+    b.disabled = true; ds.textContent = "Drafting… (about 20 seconds)";
+    try {
+      const r = await api("/api/persona-draft", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ description: document.getElementById("desc").value }) });
+      fill({ ...NEW_PERSONA, ...r.persona, knowledge: { ...NEW_PERSONA.knowledge, ...r.persona.knowledge }, patience: { ...NEW_PERSONA.patience, ...r.persona.patience } }, r.voiceSamples);
+      ds.textContent = r.valid ? "Drafted. Check every field before saving." : `Drafted with problems: ${r.errors.join("; ")}`;
+    } catch (e) { ds.textContent = e.message; }
+    finally { b.disabled = false; }
+  });
+
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const st = document.getElementById("save-status");
+    if (!f.reportValidity()) return;
+    const body = { persona: read(), voiceSamples: val("samples"), studies: [...f.querySelectorAll("[name=study]:checked")].map((x) => x.value) };
+    st.textContent = "Saving…";
+    const r = await fetch(editing ? `/api/personas/${id}` : "/api/personas", { method: editing ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) { st.textContent = j.error; st.classList.add("err"); return; }
+    location.hash = `#/persona/${j.persona.id}`;
+  };
 }
 
 // ---------- Calibration ----------

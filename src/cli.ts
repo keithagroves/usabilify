@@ -4,6 +4,8 @@ import { parseArgs } from "node:util";
 
 const HELP = `usabilify <command>
 
+  init <study> [--url <app url>] [--name] [--launch "<cmd>" --ready <url>] [--personas a,b] [--goal "..."] [--start /path] [--success text:...|url:...|js:...] [--task <id>] [--yes]
+                                              scaffold a study for an app; asks for anything not given
   fixture <name> [--port 4400]                serve a fixture app
   run <study> [--tasks a,b] [--personas a,b] [--trials 1] [--concurrency 3] [--brain claude-code:sonnet] [--budget-usd 10] [--no-trace]
   grade <study> <run>                         recompute deterministic metrics (free)
@@ -26,7 +28,7 @@ const { values: v, positionals: pos } = parseArgs({
   options: {
     port: { type: "string" }, tasks: { type: "string" }, personas: { type: "string" }, trials: { type: "string" },
     concurrency: { type: "string" }, brain: { type: "string" }, "budget-usd": { type: "string" }, "no-trace": { type: "boolean" },
-    baseline: { type: "string" }, lens: { type: "string" }, fps: { type: "string" }, judge: { type: "string" }, n: { type: "string" },
+    baseline: { type: "string" }, lens: { type: "string" }, url: { type: "string" }, name: { type: "string" }, launch: { type: "string" }, ready: { type: "string" }, goal: { type: "string" }, start: { type: "string" }, success: { type: "string" }, task: { type: "string" }, yes: { type: "boolean" }, fps: { type: "string" }, judge: { type: "string" }, n: { type: "string" },
   },
 });
 const list = (s?: string) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : undefined);
@@ -34,6 +36,12 @@ const BRAIN = v.brain ?? process.env.USABILIFY_BRAIN ?? "claude-code:sonnet";
 
 async function main() {
   switch (cmd) {
+    case "init": {
+      const { init } = await import("./init.js");
+      if (!pos[0]) { console.log("usage: usabilify init <study-id> [--url …]"); return; }
+      await init(pos[0], { url: v.url, name: v.name, launch: v.launch, ready: v.ready, personas: list(v.personas), goal: v.goal, start: v.start, success: v.success, task: v.task, yes: v.yes });
+      return;
+    }
     case "fixture": {
       const { serveFixture } = await import("./fixture.js");
       const port = Number(v.port ?? 4400);
@@ -86,4 +94,9 @@ async function main() {
     default: console.log(HELP);
   }
 }
-main().catch((e) => { console.error(e instanceof Error ? e.stack : e); process.exit(1); });
+main().catch((e) => {
+  // Expected, user-facing failures (bad flags, missing files) get one line; anything else keeps its stack.
+  const expected = e instanceof Error && (/^(study id|--url|not a URL|success must|unknown personas|task id|.*already exists)/.test(e.message));
+  console.error(expected ? `error: ${e.message}` : e instanceof Error ? e.stack : e);
+  process.exit(1);
+});
