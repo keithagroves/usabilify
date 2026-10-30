@@ -1,0 +1,47 @@
+1
+00:00:00,600 --> 00:00:12,030
+Your tests pass. Your users still get stuck. Usabilify gives you a panel of AI beta testers, each one a different kind of person, who try your app on every build.
+
+2
+00:00:12,481 --> 00:00:18,311
+This is Dana. She is red-green color blind, and she wants to turn off a weekly email.
+
+3
+00:00:18,763 --> 00:00:28,083
+On the left is the real screen. On the right is what Dana sees. We don't tell the model to act color blind. We take the red away before it looks.
+
+4
+00:00:28,534 --> 00:00:31,014
+Here is Dana, in her own words.
+
+5
+00:00:54,469 --> 00:01:04,169
+The setting did change. An end-to-end test for this toggle passes. Dana never knew it worked. That is a green build, and a user who doesn't trust it.
+
+6
+00:01:04,619 --> 00:01:14,339
+Priya is on her phone, on a bus. Her taps land with thumb-sized error, so a settings gear twenty pixels wide gets missed for real, and she has to notice.
+
+7
+00:01:14,791 --> 00:01:18,441
+She tries it three times. Then she does what people do.
+
+8
+00:01:34,984 --> 00:01:46,604
+Walt is seventy-one. He looks back at the screen two seconds after he acts. The confirmation lasts a second and a half, so it is gone before he sees it. The test saw it. Walt didn't.
+
+9
+00:01:47,054 --> 00:02:00,654
+Kim can't use a mouse. Ray hears the page one line at a time. The menu that holds the team page is a div with a click handler, so to Ray it is just the letters J D, and neither of them can reach it at all.
+
+10
+00:02:01,104 --> 00:02:13,535
+Every beta tester is built, not prompted. Each one is a model of a person with parts you can open: what she sees, where her clicks land, what she already knows, and how long she will put up with you.
+
+11
+00:02:13,986 --> 00:02:23,436
+Run the whole panel on every build. Seven people, three tasks, three minutes, under two dollars. The grid shows which kind of person failed where.
+
+12
+00:02:23,887 --> 00:02:27,307
+Usabilify. Beta testers, engineered.
