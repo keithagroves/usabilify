@@ -18,14 +18,30 @@ menuBtn.onclick = () => { const open = !side.classList.contains("open"); side.cl
 side.addEventListener("click", (e) => { if (e.target.closest("a")) { side.classList.remove("open"); menuBtn.setAttribute("aria-expanded", "false"); } });
 const studySel = document.getElementById("study");
 let STUDY = (() => { try { return localStorage.getItem("study") || ""; } catch { return ""; } })();
+let STUDIES = [];
 async function loadStudies() {
-  const ss = await api("/api/studies");
-  if (!ss.some((s) => s.id === STUDY)) STUDY = ss[0]?.id ?? "";
-  studySel.innerHTML = ss.map((s) => `<option value="${esc(s.id)}" ${s.id === STUDY ? "selected" : ""}>${esc(s.name)}</option>`).join("");
-  const cur = ss.find((s) => s.id === STUDY);
-  document.getElementById("side-meta").textContent = cur ? `${cur.runs.length} runs` : "";
+  STUDIES = await api("/api/studies");
+  if (!STUDIES.some((s) => s.id === STUDY)) STUDY = STUDIES[0]?.id ?? "";
+  studySel.innerHTML = STUDIES.map((s) => `<option value="${esc(s.id)}" ${s.id === STUDY ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+  const cur = STUDIES.find((s) => s.id === STUDY);
+  document.getElementById("side-meta").textContent = cur ? `${cur.name}: ${cur.runs.length} run${cur.runs.length === 1 ? "" : "s"}` : "No projects yet";
 }
-studySel.onchange = () => { STUDY = studySel.value; try { localStorage.setItem("study", STUDY); } catch {} if (!location.hash || location.hash === "#/") route(); };
+/** Switch the whole dashboard to a project. Pages that belong to a run or session jump to their list. */
+function setStudy(id) {
+  if (id === STUDY) return;
+  STUDY = id;
+  try { localStorage.setItem("study", STUDY); } catch {}
+  studySel.value = STUDY;
+  const cur = STUDIES.find((s) => s.id === STUDY);
+  document.getElementById("side-meta").textContent = cur ? `${cur.name}: ${cur.runs.length} run${cur.runs.length === 1 ? "" : "s"}` : "";
+  const [path] = (location.hash.slice(1) || "/").split("?");
+  const parts = path.split("/").filter(Boolean);
+  const target = parts[0] === "run" ? "#/runs" : parts[0] === "session" ? "#/sessions" : null;
+  if (target) location.hash = target; else route();
+}
+studySel.onchange = () => setStudy(studySel.value);
+const sq = (params) => `?study=${encodeURIComponent(STUDY)}${params ? "&" + params : ""}`;
+const studyName = () => STUDIES.find((s) => s.id === STUDY)?.name ?? STUDY;
 
 function setNav(section) {
   document.querySelectorAll(".side nav a").forEach((a) => a.dataset.nav === section ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
@@ -35,23 +51,27 @@ function crumbs(items) {
   document.title = `${items[items.length - 1][0]} · Usabilify`;
 }
 
+/** A run or session link can point at another project: make that the current one so the rest of the dashboard matches. */
+function followStudy(id) {
+  if (id && id !== STUDY && STUDIES.some((s) => s.id === id)) { STUDY = id; try { localStorage.setItem("study", STUDY); } catch {} studySel.value = STUDY; }
+}
 async function route() {
   cleanup(); cleanup = () => {};
   const [path, query] = (location.hash.slice(1) || "/").split("?");
   const q = new URLSearchParams(query ?? "");
+  if (!STUDIES.length) await loadStudies();
   const parts = path.split("/").filter(Boolean);
   const section = { run: "runs", session: "sessions", persona: "personas" }[parts[0]] ?? parts[0] ?? "overview";
   setNav(section);
   app.className = ["run", "session", "calibration"].includes(parts[0]) ? "legacy" : "";
   app.innerHTML = `<p class="meta">Loading…</p>`;
   try {
-    if (!studySel.options.length) await loadStudies();
     if (!parts.length) await overviewPage();
     else if (parts[0] === "runs") await runsPage();
     else if (parts[0] === "sessions") await sessionsPage(q);
     else if (parts[0] === "issues") await issuesPage();
     else if (parts[0] === "monitor") await monitorPage();
-    else if (parts[0] === "run") { crumbs([["Runs", "#/runs"], [parts[2], ""]]); await runPage(parts[1], parts[2], q.get("baseline")); }
+    else if (parts[0] === "run") { followStudy(parts[1]); crumbs([["Runs", "#/runs"], [parts[2], ""]]); await runPage(parts[1], parts[2], q.get("baseline")); }
     else if (parts[0] === "session") await sessionPage(parts[1], q);
     else if (parts[0] === "personas" && parts[1] === "new") await personaForm(null, q.get("from"));
     else if (parts[0] === "personas") await personasPage();
@@ -87,65 +107,65 @@ function delta(cur, prev, { upIsGood = true, pctPoints = false, fmt = (x) => x }
 // ---------- Overview ----------
 async function overviewPage() {
   await loadStudies();
-  if (!STUDY) { crumbs([["Overview", ""]]); app.innerHTML = `<p>No studies yet. Create one under <code>studies/</code> and run it.</p>`; return; }
-  const d = await api(`/api/overview?study=${encodeURIComponent(STUDY)}`);
   crumbs([["Overview", ""]]);
+  if (!STUDY) { app.innerHTML = emptyState("No projects yet", `<p>Point Usabilify at an app:</p><pre>npx tsx src/cli.ts init myapp --url http://localhost:3000</pre>`); return; }
+  const d = await api(`/api/overview${sq()}`);
   const L = d.latest, P = d.prev;
-  if (!L) { app.innerHTML = `<h1>${esc(d.study.name)}</h1><p>No runs yet. <code>usabilify run ${esc(STUDY)}</code></p>`; return; }
+  if (!L) {
+    app.innerHTML = `<div class="pagehead"><div><h1>${esc(d.study.name)}</h1><p class="meta">${esc(d.study.baseUrl)} · ${d.study.tasks.length} task${d.study.tasks.length === 1 ? "" : "s"} · ${d.study.personas.length} personas</p></div></div>` +
+      emptyState("No runs yet", `<p>Nothing has been measured for ${esc(d.study.name)}. Run the panel, then analyze it:</p>
+        <pre>npx tsx src/cli.ts run ${esc(STUDY)} --trials 3\nnpx tsx src/cli.ts analyze ${esc(STUDY)} &lt;run&gt;</pre>
+        <p class="meta">Tasks: ${d.study.tasks.map((t) => `<code>${esc(t)}</code>`).join(", ")} · edit them in <code>studies/${esc(STUDY)}/tasks/</code>. Personas: ${d.study.personas.map((p) => esc(d.personas[p]?.name ?? p)).join(", ")}.</p>`);
+    return;
+  }
   const rate = (r) => (r && r.sessions ? r.completed / r.sessions : null);
-  const firing = d.signals.filter((s) => s.firing);
-  const hi = (d.topIssues ?? []).filter((i) => i.severity === "high").length;
   const pn = (id) => d.personas[id]?.name ?? id;
+  const firing = d.signals.filter((s) => s.firing);
+  const worse = d.changes.filter((c) => c.dir === "worse"), better = d.changes.filter((c) => c.dir === "better");
+  const top = d.topIssues[0];
+  const sessHref = (id, step, issue) => `#/session/${id}?${[step != null ? `step=${step}` : "", issue ? `issue=${encodeURIComponent(issue)}` : ""].filter(Boolean).join("&")}`;
+  const changeTile = !P
+    ? { cls: "", value: "First run", sub: "Nothing to compare with yet." }
+    : worse.length ? { cls: "bad", value: `${worse.length} worse`, sub: `${better.length} better · since ${shortTs(P.ts)}` }
+    : { cls: "good", value: "Nothing worse", sub: `${better.length} better · since ${shortTs(P.ts)}` };
   app.innerHTML = `
     <div class="pagehead">
-      <div><h1>${esc(d.study.name)}</h1><p class="meta">Latest run <a href="#/run/${esc(STUDY)}/${esc(L.id)}">${esc(L.id)}</a> · ${shortTs(L.ts)} · app <code>${esc(L.app)}</code> · ${d.totals.personas} personas × ${d.totals.tasks} tasks</p></div>
+      <div><h1>${esc(d.study.name)}</h1><p class="meta">Latest run <a href="#/run/${esc(STUDY)}/${esc(L.id)}">${esc(L.id)}</a> · ${shortTs(L.ts)} · app <code>${esc(L.app)}</code> · ${L.sessions} sessions, ${d.totals.personas} personas × ${d.totals.tasks} tasks</p></div>
       <div class="row"><a class="btn" href="#/runs">All runs</a><a class="btn primary" href="#/run/${esc(STUDY)}/${esc(L.id)}">Open latest run</a></div>
     </div>
-    <section class="tiles" aria-label="Key metrics">
-      <div class="tile hero"><div class="label">Task success, latest run</div><div class="value">${Math.round(rate(L) * 100)}%</div>
-        <div class="sub">${L.completed} of ${L.sessions} sessions ${delta(rate(L) * 100, P ? rate(P) * 100 : null, { pctPoints: true, fmt: (x) => Math.round(x) })}</div>
-        <div class="meter" aria-hidden="true"><div style="width:${rate(L) * 100}%"></div></div></div>
-      <div class="tile"><div class="label">Gave up</div><div class="value">${L.gaveUp}</div><div class="sub">${delta(L.gaveUp, P?.gaveUp, { upIsGood: false })}</div></div>
-      <div class="tile"><div class="label">Finished without knowing it</div><div class="value">${L.unaware}</div><div class="sub">${L.wrongDone} thought done but weren't</div></div>
-      <div class="tile"><div class="label">Issues found</div><div class="value">${L.issues ?? "–"}</div><div class="sub">${L.analyzed ? `${L.highIssues} high severity` : "not analyzed yet"}</div></div>
-      <div class="tile"><div class="label">Planted issues recovered</div><div class="value">${d.recall ? `${d.recall.found}/${d.recall.total}` : "–"}</div><div class="sub">${d.recall?.missed?.length ? `missed ${esc(d.recall.missed.join(", "))}` : d.recall ? "none missed" : "no known issues"}</div></div>
+    <section class="tiles tiles-4" aria-label="Key facts">
+      <div class="tile hero ${changeTile.cls}"><div class="label">What changed</div><div class="value">${esc(changeTile.value)}</div><div class="sub">${esc(changeTile.sub)}</div></div>
+      <div class="tile"><div class="label">Fix first</div><div class="value small">${top ? `<span class="sev ${esc(top.severity)}">${esc(top.severity)}</span><a href="${top.example ? sessHref(top.example.session, top.example.atStep, top.title) : "#/issues"}">${esc(top.title)}</a>` : "–"}</div><div class="sub">${top ? `${top.personas.length} of ${d.totals.personas} personas hit it` : L.analyzed ? "no issues found" : `not analyzed · <code>usabilify analyze ${esc(STUDY)} ${esc(L.id)}</code>`}</div></div>
+      <div class="tile"><div class="label">Who is struggling</div><div class="value">${d.struggling.length} <span class="of">of ${d.totals.personas}</span></div><div class="sub">${d.struggling.length ? d.struggling.map((p) => `<a href="#/sessions?persona=${esc(p)}&outcome=failed">${esc(pn(p))}</a>`).join(", ") : "every persona finished every task"}</div></div>
+      <div class="tile"><div class="label">Task success</div><div class="value">${Math.round(rate(L) * 100)}%</div><div class="sub">${L.completed} of ${L.sessions} · ${L.gaveUp} gave up · ${L.unaware} didn't know ${delta(rate(L) * 100, P ? rate(P) * 100 : null, { pctPoints: true, fmt: (x) => Math.round(x) })}</div></div>
     </section>
     <div class="dash" style="margin-top:16px">
-      <section class="card span-8"><div class="card-h"><h2>Task success by run</h2><span class="meta">bars: share completed · lines: 95% interval</span></div><div id="c-runs"></div>
-        ${Charts.table(["Run", "Started", "Completed", "Sessions"], d.runs.map((r) => [r.id, shortTs(r.ts), r.completed, r.sessions]))}</section>
-      <section class="card span-4"><div class="card-h"><h2>Signals</h2><a class="meta" href="#/monitor">Monitor</a></div>
-        ${firing.length ? `<ul class="mini-list">${firing.map((s) => `<li><a href="#/monitor"><span class="badge ${s.severity === "high" ? "critical" : "warning"}">${s.severity === "high" ? "✕" : "!"} ${esc(s.severity)}</span><span><span class="t">${esc(s.id.replace(/_/g, " "))}</span><br><span class="meta">${esc(s.scope)}: ${s.value} &gt; ${s.threshold} · ${esc(s.why)}</span></span><span></span></a></li>`).join("")}</ul>` : `<p><span class="badge good">✓ all clear</span></p><p class="meta">${d.signals.length} signals within threshold over the last runs.</p>`}
-        <div class="stack" style="margin-top:14px">
-          <div class="row"><span class="stat"><span class="k">Runs</span><br><span class="big">${d.totals.runs}</span></span><span class="stat"><span class="k">Sessions</span><br><span class="big">${d.totals.sessions}</span></span><span class="stat"><span class="k">Spend</span><br><span class="big">${fmtUsd(d.totals.costUsd)}</span></span></div>
-          <p class="meta">Latest run took ${fmtDur(L.wallMs)} wall time; median session ${L.medianStepsVsBaseline ?? "–"}× the expert's steps.</p>
-        </div></section>
-      <section class="card span-6"><div class="card-h"><h2>Outcomes by persona</h2><span class="meta">latest run</span></div>
-        <ul class="legend">${OUTCOME_SERIES.map((s) => `<li><i style="background:${s.color}"></i>${s.icon} ${esc(s.label)}</li>`).join("")}</ul>
-        <div id="c-outcomes"></div>
-        ${Charts.table(["Persona", ...OUTCOME_SERIES.map((s) => s.label)], d.byPersona.map((r) => [r.name, ...OUTCOME_SERIES.map((s) => r[s.key])]))}</section>
-      <section class="card span-6"><div class="card-h"><h2>Where they fail</h2><span class="meta">failure rate, persona × task · click a cell to watch</span></div><div id="c-heat"></div>
+      <section class="card span-6"><div class="card-h"><h2>What changed</h2><span class="meta">${P ? `vs <a href="#/run/${esc(STUDY)}/${esc(L.id)}?baseline=${esc(P.id)}">${esc(P.id)}</a>` : "no previous run"}</span></div>
+        ${!P ? `<p class="meta">This is the first run with enough sessions to compare. The next run will show what got better or worse.</p>` :
+          !d.changes.length && !firing.length ? `<p><span class="badge good">✓ No change</span></p><p class="meta">Every persona × task cell has the same outcome as last run, and no signal is firing.</p>` : `
+          ${worse.length ? `<h3 class="sub-h bad-ink">Worse</h3><ul class="change-list">${worse.map((c) => `<li><a href="${sessHref(c.session)}"><b>${esc(pn(c.persona))}</b> · ${esc(c.task)}<span class="meta">${esc(c.was)} → <b>${esc(c.now)}</b></span></a></li>`).join("")}</ul>` : `<p><span class="badge good">✓ Nothing got worse</span></p>`}
+          ${firing.length ? `<h3 class="sub-h bad-ink">Signals firing</h3><ul class="change-list">${firing.map((s) => `<li><a href="#/monitor"><b>${esc(s.id.replace(/_/g, " "))}</b> · ${esc(s.scope)}<span class="meta">${s.value} &gt; ${s.threshold} · ${esc(s.why)}</span></a></li>`).join("")}</ul>` : ""}
+          ${better.length ? `<details class="better" ${worse.length ? "" : "open"}><summary>${better.length} better</summary><ul class="change-list">${better.map((c) => `<li><a href="${sessHref(c.session)}"><b>${esc(pn(c.persona))}</b> · ${esc(c.task)}<span class="meta">${esc(c.was)} → <b>${esc(c.now)}</b></span></a></li>`).join("")}</ul></details>` : ""}`}
+      </section>
+      <section class="card span-6"><div class="card-h"><h2>Fix first</h2><a class="meta" href="#/issues">All issues${L.issues != null ? ` (${L.issues})` : ""}</a></div>
+        ${d.topIssues.length ? `<ol class="fix-list">${d.topIssues.slice(0, 5).map((i) => { const e = i.example; return `<li><a href="${e ? sessHref(e.session, e.atStep, i.title) : "#/issues"}"><span class="sev ${esc(i.severity)}">${esc(i.severity)}</span><span class="t">${esc(i.title)}</span><span class="meta">${i.personas.length} persona${i.personas.length === 1 ? "" : "s"}${i.known ? ` · planted ${esc(i.known)}` : ""}</span>${e?.evidence ? `<span class="q">“${esc(unq(e.evidence))}”</span>` : ""}${e ? `<span class="watch">▶ Watch ${esc(pn(e.persona))}${e.outcome && e.outcome !== "completed" ? " give up" : e.unaware ? " finish without knowing" : ""}</span>` : ""}</a></li>`; }).join("")}</ol>` : `<p class="meta">Not analyzed. <code>usabilify analyze ${esc(STUDY)} ${esc(L.id)}</code></p>`}</section>
+      <section class="card span-12"><div class="card-h"><h2>Where they fail</h2><span class="meta">latest run · every cell opens that replay at the stuck step</span></div><div id="c-heat"></div>
         ${Charts.table(["Persona", "Task", "Failed", "Sessions"], d.grid.map((c) => [pn(c.persona), c.task, c.n - c.completed, c.n]))}</section>
-      <section class="card span-7"><div class="card-h"><h2>Top issues</h2><a class="meta" href="#/issues">All issues</a></div>
-        ${d.topIssues.length ? `<ul class="mini-list">${d.topIssues.map((i) => { const f = i.findings.find((x) => x.evidence) ?? i.findings[0]; return `<li><a href="#/session/${esc(f?.session)}?step=${f?.atStep ?? 0}"><span class="sev ${esc(i.severity)}">${esc(i.severity)}</span><span><span class="t">${esc(i.title)}</span>${i.known ? ` <span class="chip">planted ${esc(i.known)}</span>` : ""}<br>${f?.evidence ? `<span class="q">“${esc(unq(f.evidence))}” — ${esc(pn(f.persona))}</span>` : ""}</span><span class="meta">${i.personas.length} personas</span></a></li>`; }).join("")}</ul>` : `<p class="meta">Not analyzed. <code>usabilify analyze ${esc(STUDY)} ${esc(L.id)}</code></p>`}</section>
-      <section class="card span-5"><div class="card-h"><h2>Issues by kind</h2><span class="meta">sessions affected</span></div><div id="c-kinds"></div>
-        ${Charts.table(["Kind", "Sessions"], d.issueKinds.map((k) => [k.kind, k.n]))}</section>
       <section class="card span-12"><div class="card-h"><h2>Needs attention</h2><a class="meta" href="#/sessions">All sessions</a></div><div id="t-attn"></div></section>
     </div>`;
-  const stop = [];
-  stop.push(Charts.columns(document.getElementById("c-runs"), d.runs.map((r) => ({ x: shortTs(r.ts).replace(/,.*$/, "") + " " + new Date(r.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), k: r.completed, n: r.sessions, href: `#/run/${r.study}/${r.id}` })), { label: "Task success rate by run" }));
-  stop.push(Charts.stacked(document.getElementById("c-outcomes"), d.byPersona.map((r) => ({ label: r.name, values: r })), OUTCOME_SERIES, { label: "Outcomes by persona" }));
   const tasks = d.study.tasks.filter((t) => d.grid.some((c) => c.task === t));
   const personas = d.study.personas.filter((p) => d.grid.some((c) => c.persona === p));
-  stop.push(Charts.heat(document.getElementById("c-heat"), personas.map((p) => ({ id: p, label: pn(p) })), tasks.map((t) => ({ id: t, label: t })), (r, c) => {
+  const stop = Charts.heat(document.getElementById("c-heat"), personas.map((p) => ({ id: p, label: pn(p) })), tasks.map((t) => ({ id: t, label: t })), (r, c) => {
     const g = d.grid.find((x) => x.persona === r.id && x.task === c.id); if (!g) return null;
     const failed = g.n - g.completed;
-    return { rate: failed / g.n, sym: failed ? "✕" : "✓", text: g.n === 1 ? (failed ? "failed" : "done") : `${failed}/${g.n}`, href: `#/session/${g.sessions[0]}`, tv: `${Math.round((failed / g.n) * 100)}% failed`, tl: `${r.label} · ${c.label} · ${failed} of ${g.n} sessions` };
-  }, { label: "Failure rate by persona and task" }));
-  stop.push(Charts.ranked(document.getElementById("c-kinds"), d.issueKinds.map((k) => ({ label: k.kind.replace(/-/g, " "), n: k.n })), { label: "Issues by kind" }));
-  cleanup = () => stop.forEach((f) => f());
+    const s0 = d.attention.find((a) => g.sessions.includes(a.id)) ?? null;
+    const sid = s0?.id ?? g.sessions[0], step = s0?.metrics?.stuckStep;
+    return { rate: failed / g.n, sym: failed ? "✕" : "✓", text: g.n === 1 ? (failed ? "failed" : "done") : `${failed}/${g.n}`, href: sessHref(sid, step), tv: `${Math.round((failed / g.n) * 100)}% failed`, tl: `${r.label} · ${c.label} · ${failed} of ${g.n} sessions · click to watch` };
+  }, { label: "Failure rate by persona and task" });
+  cleanup = () => stop();
   MasterTable(document.getElementById("t-attn"), {
     id: "attn", noun: "sessions", label: "sessions needing attention", rows: d.attention, rowId: (r) => r.id,
-    href: (r) => `#/session/${r.id}${r.metrics?.stuckStep != null ? `?step=${r.metrics.stuckStep}` : ""}`,
+    href: (r) => sessHref(r.id, r.metrics?.stuckStep), empty: "Nothing needs attention: every session completed and the persona knew it.",
     search: (r) => `${pn(r.persona)} ${r.task} ${r.outcome.reason}`, sort: { key: "outcome", dir: "asc" },
     columns: [
       { key: "persona", label: "Persona", value: (r) => pn(r.persona), render: (r) => esc(pn(r.persona)) },
@@ -156,6 +176,7 @@ async function overviewPage() {
     ],
   });
 }
+function emptyState(title, body) { return `<div class="empty-state"><h2>${esc(title)}</h2>${body}</div>`; }
 function outcomeBadge(r) {
   if (r.outcome.kind === "completed" && r.unaware) return `<span class="badge warning">? Completed, didn't know</span>`;
   const m = { completed: ["good", "✓ Completed"], "gave-up": ["critical", "✕ Gave up"], "wrong-done": ["serious", "! Thought done"], "timed-out": ["neutral", "⧗ Timed out"], error: ["neutral", "⚠ Error"] }[r.outcome.kind];
@@ -165,16 +186,15 @@ function outcomeBadge(r) {
 // ---------- Runs: master table ----------
 async function runsPage() {
   crumbs([["Runs", ""]]);
-  const runs = await api("/api/runs");
-  const studies = [...new Set(runs.map((r) => r.study))];
-  app.innerHTML = `<div class="pagehead"><div><h1>Runs</h1><p class="meta">Every run of every study. Click a row to open it; tick two runs of the same study to compare.</p></div></div><div id="t-runs"></div>`;
+  const runs = await api(`/api/runs${sq()}`);
+  app.innerHTML = `<div class="pagehead"><div><h1>Runs</h1><p class="meta">Every run of ${esc(studyName())}. Click a row to open it; tick two to compare.</p></div></div><div id="t-runs"></div>`;
+  if (!runs.length) { app.innerHTML += emptyState("No runs yet", `<pre>npx tsx src/cli.ts run ${esc(STUDY)} --trials 3</pre>`); return; }
   const pctBar = (k, n) => n ? `<span class="bar-cell"><span class="track" aria-hidden="true"><div style="width:${(k / n) * 100}%"></div></span>${Math.round((k / n) * 100)}%</span>` : "–";
   MasterTable(document.getElementById("t-runs"), {
-    id: "runs", noun: "runs", label: "runs", rows: runs, rowId: (r) => r.id, selectable: true,
+    id: `runs:${STUDY}`, noun: "runs", label: "runs", rows: runs, rowId: (r) => r.id, selectable: true,
     href: (r) => `#/run/${r.study}/${r.id}`, sort: { key: "ts", dir: "desc" },
     search: (r) => `${r.id} ${r.study} ${r.app} ${r.brain}`,
     filters: [
-      { key: "study", label: "Study", options: studies.map((s) => [s, s]), test: (r, v) => r.study === v },
       { key: "state", label: "State", options: [["analyzed", "Analyzed"], ["unanalyzed", "Not analyzed"], ["failures", "Has failures"], ["running", "Running"]], test: (r, v) => v === "analyzed" ? r.analyzed : v === "unanalyzed" ? !r.analyzed : v === "failures" ? r.completed < r.sessions : r.status === "running" },
       { key: "size", label: "Size", options: [["full", "5+ sessions"], ["small", "Under 5"]], test: (r, v) => (v === "full" ? r.sessions >= 5 : r.sessions < 5) },
     ],
@@ -182,14 +202,12 @@ async function runsPage() {
     onAction: (name, sel) => {
       if (name !== "compare" || sel.length !== 2) return;
       const [a, b] = sel.map((id) => runs.find((r) => r.id === id)).sort((x, y) => Date.parse(x.ts) - Date.parse(y.ts));
-      if (a.study !== b.study) { alert("Pick two runs of the same study."); return; }
       location.hash = `#/run/${b.study}/${b.id}?baseline=${a.id}`;
     },
     columns: [
       { key: "id", label: "Run", render: (r) => esc(r.id) },
       { key: "status", label: "State", value: (r) => `${r.status}${r.analyzed}`, render: (r) => r.status === "running" ? `<span class="badge warning">● Running</span>` : r.analyzed ? `<span class="badge good">✓ Analyzed</span>` : `<span class="badge neutral">Done</span>` },
       { key: "ts", label: "Started", value: (r) => Date.parse(r.ts), render: (r) => shortTs(r.ts) },
-      { key: "study", label: "Study" },
       { key: "sessions", label: "Sessions", num: true, title: "personas × tasks × trials", render: (r) => `${r.sessions} <span class="meta">(${r.personas}×${r.tasks}×${r.trials})</span>` },
       { key: "success", label: "Success", num: true, value: (r) => (r.sessions ? r.completed / r.sessions : -1), render: (r) => pctBar(r.completed, r.sessions) },
       { key: "gaveUp", label: "Gave up", num: true },
@@ -209,12 +227,14 @@ async function runsPage() {
 // ---------- Sessions: master table ----------
 async function sessionsPage(q) {
   crumbs([["Sessions", ""]]);
-  const [rows, personas] = [await api("/api/sessions"), await api("/api/personas")];
+  const [rows, personas] = [await api(`/api/sessions${sq()}`), await api(`/api/personas${sq()}`)];
   const pn = Object.fromEntries(personas.map((p) => [p.persona.id, p.persona.name]));
   const uniq = (f) => [...new Set(rows.map(f))].sort();
-  app.innerHTML = `<div class="pagehead"><div><h1>Sessions</h1><p class="meta">One persona attempting one task once. Click a row to watch the replay at the step where they got stuck.</p></div></div><div id="t-sessions"></div>`;
+  app.innerHTML = `<div class="pagehead"><div><h1>Sessions</h1><p class="meta">One persona attempting one task once, in ${esc(studyName())}. Click a row to watch the replay at the step where they got stuck.</p></div></div><div id="t-sessions"></div>`;
+  if (!rows.length) { app.innerHTML += emptyState("No sessions yet", `<pre>npx tsx src/cli.ts run ${esc(STUDY)} --trials 3</pre>`); return; }
+  const initial = q.get("persona") || q.get("outcome") || q.get("task") ? { f: { persona: q.get("persona") || "", outcome: q.get("outcome") || "", task: q.get("task") || "" } } : undefined;
   MasterTable(document.getElementById("t-sessions"), {
-    id: "sessions", noun: "sessions", label: "sessions", rows, rowId: (r) => r.id,
+    id: `sessions:${STUDY}`, initial, noun: "sessions", label: "sessions", rows, rowId: (r) => r.id,
     href: (r) => `#/session/${r.id}${r.metrics?.stuckStep != null ? `?step=${r.metrics.stuckStep}` : ""}`, sort: { key: "ts", dir: "desc" },
     search: (r) => `${r.id} ${pn[r.persona] ?? r.persona} ${r.task} ${r.run} ${r.outcome.reason}`,
     filters: [
@@ -245,13 +265,14 @@ async function sessionsPage(q) {
 // ---------- Issues: master table ----------
 async function issuesPage() {
   crumbs([["Issues", ""]]);
-  const rows = await api("/api/issues");
+  const rows = await api(`/api/issues${sq()}`);
   const kinds = [...new Set(rows.map((r) => r.kind))].sort();
   const sevRank = { high: 3, medium: 2, low: 1 };
-  app.innerHTML = `<div class="pagehead"><div><h1>Issues</h1><p class="meta">From the latest analyzed run of each study, merged across personas. Click a row to watch the clearest example.</p></div></div><div id="t-issues"></div>`;
+  app.innerHTML = `<div class="pagehead"><div><h1>Issues</h1><p class="meta">From the latest analyzed run of ${esc(studyName())}, merged across personas. Click a row to watch the clearest example.</p></div></div><div id="t-issues"></div>`;
+  if (!rows.length) { app.innerHTML += emptyState("No issues yet", `<p>Issues appear once a run has been analyzed.</p><pre>npx tsx src/cli.ts analyze ${esc(STUDY)} &lt;run&gt;</pre>`); return; }
   MasterTable(document.getElementById("t-issues"), {
-    id: "issues", noun: "issues", label: "issues", rows, rowId: (r) => `${r.run}:${r.id}`,
-    href: (r) => { const f = r.findings.find((x) => x.evidence) ?? r.findings[0]; return f ? `#/session/${f.session}?step=${f.atStep}` : ""; },
+    id: `issues:${STUDY}`, noun: "issues", label: "issues", rows, rowId: (r) => `${r.run}:${r.id}`,
+    href: (r) => (r.example ? `#/session/${r.example.session}?step=${r.example.atStep}` : ""),
     sort: { key: "impact", dir: "desc" }, search: (r) => `${r.title} ${r.summary} ${r.kind} ${r.personaNames.join(" ")}`,
     filters: [
       { key: "sev", label: "Severity", options: [["high", "High"], ["medium", "Medium"], ["low", "Low"]], test: (r, v) => r.severity === v },
@@ -274,12 +295,13 @@ async function issuesPage() {
 // ---------- Monitor ----------
 async function monitorPage() {
   crumbs([["Monitor", ""]]);
-  const d = await api("/api/monitor");
+  const d = await api(`/api/monitor${sq()}`);
   const rows = d.studies.flatMap((s) => s.signals.map((x, i) => ({ ...x, study: s.id, rid: `${s.id}:${x.id}:${x.scope}:${i}` })));
-  app.innerHTML = `<div class="pagehead"><div><h1>Monitor</h1><p class="meta">Signals over each study's last ${d.config.window.runs} runs. Rates fire on the lower bound of their 95% interval, so small samples don't page anyone. Uncertain judge verdicts don't count.</p></div></div>
+  if (!d.studies.some((s) => s.runs.length)) { app.innerHTML = `<div class="pagehead"><div><h1>Monitor</h1></div></div>` + emptyState("Nothing to watch yet", `<p>Signals are evaluated over ${esc(studyName())}'s recent runs.</p>`); return; }
+  app.innerHTML = `<div class="pagehead"><div><h1>Monitor</h1><p class="meta">Signals over ${esc(studyName())}'s last ${d.config.window.runs} runs. Rates fire on the lower bound of their 95% interval, so small samples don't page anyone. Uncertain judge verdicts don't count.</p></div></div>
     <div id="t-signals"></div><h2 class="section-h">Alert history</h2><div id="t-alerts"></div>`;
   MasterTable(document.getElementById("t-signals"), {
-    id: "signals", noun: "signals", label: "signals", rows, rowId: (r) => r.rid, sort: { key: "firing", dir: "desc" },
+    id: `signals:${STUDY}`, noun: "signals", label: "signals", rows, rowId: (r) => r.rid, sort: { key: "firing", dir: "desc" },
     search: (r) => `${r.id} ${r.scope} ${r.why} ${r.owner}`,
     filters: [{ key: "state", label: "State", options: [["firing", "Firing"], ["ok", "Within threshold"]], test: (r, v) => (v === "firing" ? r.firing : !r.firing) }, { key: "sev", label: "Severity", options: [["high", "High"], ["medium", "Medium"], ["low", "Low"]], test: (r, v) => r.severity === v }],
     columns: [
@@ -292,19 +314,31 @@ async function monitorPage() {
       { key: "n", label: "n", num: true },
       { key: "owner", label: "Owner" },
       { key: "why", label: "Why it matters", wrap: true },
-      { key: "study", label: "Study" },
     ],
   });
   MasterTable(document.getElementById("t-alerts"), {
-    id: "alerts", noun: "alerts", label: "alerts", rows: d.alerts.map((a, i) => ({ ...a, rid: String(i) })), rowId: (r) => r.rid, sort: { key: "ts", dir: "desc" }, empty: "No alerts recorded yet (usabilify monitor).",
+    id: `alerts:${STUDY}`, noun: "alerts", label: "alerts", rows: d.alerts.map((a, i) => ({ ...a, rid: String(i) })), rowId: (r) => r.rid, sort: { key: "ts", dir: "desc" }, empty: "No alerts recorded yet (usabilify monitor).",
     columns: [
       { key: "ts", label: "When", value: (r) => Date.parse(r.ts), render: (r) => shortTs(r.ts) },
       { key: "id", label: "Signal" }, { key: "scope", label: "Scope" }, { key: "severity", label: "Severity" },
-      { key: "value", label: "Value", num: true }, { key: "threshold", label: "Threshold", num: true }, { key: "study", label: "Study" },
+      { key: "value", label: "Value", num: true }, { key: "threshold", label: "Threshold", num: true },
     ],
   });
 }
 
+/** The answer to "did anything get worse?", above the grid, so nobody has to scan it. */
+function compareSummary(d, B, study, baseline) {
+  const pn = (id) => d.personas[id]?.name ?? id;
+  const state = (c, sessions) => { const failed = c.n - c.completed; const un = c.sessions.filter((id) => sessions.find((s) => s.id === id)?.unaware).length; return { score: c.failRate + (un / c.n) * 0.5, label: failed ? (c.n === 1 ? OUT[sessions.find((s) => s.id === c.sessions[0])?.outcome.kind ?? "gave-up"].word : `${failed}/${c.n} failed`) : un ? "completed, didn't know" : "completed" }; };
+  const rows = d.grid.map((c) => { const b = B.grid.find((x) => x.persona === c.persona && x.task === c.task); if (!b) return null; const now = state(c, d.sessions), was = state(b, B.sessions); const diff = now.score - was.score; return Math.abs(diff) < 1e-9 ? null : { c, now, was, dir: diff > 0 ? "worse" : "better" }; }).filter(Boolean);
+  const worse = rows.filter((r) => r.dir === "worse"), better = rows.filter((r) => r.dir === "better");
+  const li = (r) => `<li><a href="#/session/${r.c.sessions[0]}"><b>${esc(pn(r.c.persona))}</b> · ${esc(r.c.task)}<span class="meta">${esc(r.was.label)} → <b>${esc(r.now.label)}</b></span></a></li>`;
+  return `<section class="card compare"><div class="card-h"><h2>${worse.length ? `${worse.length} worse` : "Nothing worse"}${better.length ? `, ${better.length} better` : ""} than <a href="#/run/${esc(study)}/${esc(baseline)}">${esc(baseline)}</a></h2><span class="meta">${B.sessions.filter((x) => x.outcome.kind === "completed").length}/${B.sessions.length} completed then · ${d.sessions.filter((x) => x.outcome.kind === "completed").length}/${d.sessions.length} now</span></div>
+    ${worse.length ? `<h3 class="sub-h bad-ink">Worse</h3><ul class="change-list">${worse.map(li).join("")}</ul>` : ""}
+    ${better.length ? `<h3 class="sub-h good-ink">Better</h3><ul class="change-list">${better.map(li).join("")}</ul>` : ""}
+    ${!rows.length ? `<p class="meta">Every persona × task cell has the same outcome in both runs.</p>` : ""}
+    <p class="meta">With one trial per cell a single flip is within noise; run <code>--trials 3</code> before acting on one.</p></section>`;
+}
 function cellHtml(c, sessions, b) {
   if (!c) return `<span class="meta">not run</span>`;
   const ss = c.sessions.map((id) => sessions.find((s) => s.id === id));
@@ -335,7 +369,7 @@ async function runPage(study, run, baseline) {
     <h1>${esc(d.study.name)}</h1>
     <p class="meta">Run <code>${esc(d.run.id)}</code> · ${new Date(d.run.ts).toLocaleString()} · app <code>${esc(d.run.app)}</code> · brain <code>${esc(d.run.brain)}</code> · ${d.sessions.length} sessions · $${d.sessions.reduce((a, s) => a + s.costUsd, 0).toFixed(2)}</p>
     ${firing.length ? `<h2>Signals firing</h2><ul>${firing.map((s) => `<li><span class="sev ${s.severity}">${s.severity}</span><b>${esc(s.id)}</b> (${esc(s.scope)}): ${s.value} &gt; ${s.threshold}, n=${s.n}. <span class="meta">${esc(s.why)}</span></li>`).join("")}</ul>` : ""}
-    ${B ? `<p class="note">Compared with <a href="#/run/${esc(study)}/${esc(baseline)}">${esc(baseline)}</a>: ${B.sessions.filter((x) => x.outcome.kind === "completed").length}/${B.sessions.length} completed then, ${d.sessions.filter((x) => x.outcome.kind === "completed").length}/${d.sessions.length} now. With one trial per cell, single flips are within noise.</p>` : ""}
+    ${B ? compareSummary(d, B, study, baseline) : ""}
     <h2>Personas × tasks</h2>
     <table class="plain grid"><thead><tr><th scope="col">Persona</th>${tasks.map((t) => `<th scope="col" title="${esc(d.tasks[t].goal)}">${esc(t)}</th>`).join("")}</tr></thead><tbody>
     ${personas.map((p) => `<tr><th scope="row"><span class="pname">${esc(d.personas[p].name)}</span><br><span class="chip">${esc(d.personas[p].modality)}</span>${d.personas[p].perception.transforms.map((x) => `<span class="chip">${esc(x.type === "cvd" ? x.kind : x.type)}</span>`).join("")}${d.personas[p].viewport.isMobile ? `<span class="chip">phone</span>` : ""}</th>${tasks.map((t) => `<td>${cellHtml(d.grid.find((c) => c.persona === p && c.task === t), d.sessions, B?.grid.find((c) => c.persona === p && c.task === t))}</td>`).join("")}</tr>`).join("")}
@@ -352,7 +386,7 @@ async function runPage(study, run, baseline) {
       <div class="issue"><h3><span class="sev ${esc(i.severity)}">${esc(i.severity)}</span>${esc(i.title)} ${i.known ? `<span class="chip">planted ${esc(i.known)}</span>` : ""}</h3>
       <div>${esc(i.summary)}</div>
       <div class="meta">${i.personas.length} personas (${i.personas.map((p) => esc(d.personas[p]?.name ?? p)).join(", ")}) · ${i.sessions.length} sessions · ${esc(i.kind)}</div>
-      ${i.findings.filter((f) => f.evidence).slice(0, 2).map((f) => `<blockquote>“${esc(unq(f.evidence))}” — <a href="#/session/${f.session}?step=${f.atStep}">${esc(d.personas[f.persona]?.name ?? f.persona)}, step ${f.atStep}</a></blockquote>`).join("")}
+      ${i.example?.evidence ? `<blockquote>“${esc(unq(i.example.evidence))}” — <a href="#/session/${i.example.session}?step=${i.example.atStep}">watch ${esc(d.personas[i.example.persona]?.name ?? i.example.persona)}${i.example.outcome && i.example.outcome !== "completed" ? " give up" : ""}, step ${i.example.atStep}</a></blockquote>` : ""}
       </div>`).join("")}</div>` : `<p class="note">Not analyzed yet. Run <code>usabilify analyze ${esc(study)} ${esc(run)}</code>.</p>`}
 
     ${d.known.length && iss?.perKnown ? `<h2>Planted issues: recall ${iss.recall.found}/${iss.recall.total}</h2>
@@ -387,6 +421,8 @@ const EVENT_WORDS = (e) => e === "dead" ? "nothing happened" : e === "wrong-turn
 async function sessionPage(id, q) {
   let d = await api(`/api/session/${id}`);
   const t = d.trace, p = d.persona;
+  let time = 0, playing = false, last = 0, raf = 0, currentStep = -1;
+  followStudy(d.study);
   crumbs([["Sessions", "#/sessions"], [d.run, `#/run/${d.study}/${d.run}`], [`${p.name} · ${t.task}`, ""]]);
   const lens = q.get("lens") || (p.modality === "screen-reader" || t.steps.some((s) => s.view) ? "split" : "plain");
   const o = OUT[t.outcome.kind];
@@ -394,6 +430,7 @@ async function sessionPage(id, q) {
   app.innerHTML = `
     <h1>${esc(p.name)} · ${esc(t.task)}</h1>
     <p>${esc(d.task.goal)}</p>
+    ${q.get("issue") ? `<p class="note">You're here for <b>${esc(q.get("issue"))}</b>. The replay opens at the step where it shows.</p>` : ""}
     <p class="row"><span class="cell ${unaware && t.outcome.kind === "completed" ? "warn" : o.cls}" style="width:auto;min-height:0;display:inline-block"><span class="sym" aria-hidden="true">${o.sym}</span><b style="display:inline">${esc(o.word)}${unaware ? ", didn't realise" : ""}</b></span>
       <span class="stat">${t.metrics?.steps ?? t.steps.length} steps (expert ${d.task.baseline.steps})</span><span class="stat">${t.metrics?.wrongTurns ?? 0} wrong turns</span><span class="stat">${t.metrics?.confusionEvents ?? 0} confused</span><span class="stat">${t.metrics?.misclicks ?? 0} slips</span><span class="stat">${(t.durationMs / 1000).toFixed(0)}s · $${t.costUsd.toFixed(3)}</span></p>
     <div class="cols">
@@ -428,23 +465,30 @@ async function sessionPage(id, q) {
 
   // Voice first (cached after the first time), so the timeline uses real line lengths.
   const vs = document.getElementById("voicestatus");
+  let voicePending = false;
   if (!d.voice || !d.track) {
-    vs.textContent = "Preparing the persona's voice…";
-    try { await api(`/api/session/${id}/voice`, { method: "POST" }); d = await api(`/api/session/${id}`); vs.textContent = ""; }
-    catch (e) { vs.textContent = `Voice unavailable (${e.message}); playing silently with captions.`; }
+    // Show the replay now with captions; bring the voice in when it's ready rather than making people wait on a blank page.
+    voicePending = true;
+    vs.textContent = "Preparing the persona's voice in the background. The replay plays with captions until it's ready.";
+    api(`/api/session/${id}/voice`, { method: "POST" }).then(() => {
+      if (location.hash.split("?")[0] !== `#/session/${id}`) return;
+      if (!playing) { const step = currentStep >= 0 ? currentStep : q.get("step"); const next = `#/session/${id}?lens=${lens}${step != null ? `&step=${step}` : ""}`; if (location.hash === next) route(); else location.hash = next; }
+      else { vs.innerHTML = `Voice is ready. <button type="button" id="voice-reload">Replay with voice</button>`; document.getElementById("voice-reload").onclick = () => route(); }
+    }).catch((e) => { vs.textContent = `Voice unavailable (${e.message}); playing silently with captions.`; });
   }
   const host = document.getElementById("host"), wrap = document.getElementById("stagewrap");
+  void voicePending;
   const player = new UsabPlayer(host, { trace: d.trace, persona: p, task: d.task, durations: d.voice?.durations ?? {}, lens, files: `/files/${id}`, findings: d.trace.findings });
   const fit = () => { const s = wrap.clientWidth / 1920; player.el.style.transform = `scale(${s})`; wrap.style.height = `${1080 * s}px`; };
   fit(); window.addEventListener("resize", fit);
   const audio = d.track ? new Audio(`/files/${id}/replay/track.wav?h=${d.voice.hash}`) : null;
-  let time = 0, playing = false, last = 0, raf = 0;
+  time = 0; playing = false; last = 0; raf = 0;
   const dur = player.duration;
   const scrub = document.getElementById("scrub"), timeEl = document.getElementById("time"), playBtn = document.getElementById("play");
   const segs = player.tl.segs;
   const marks = document.getElementById("marks");
   marks.innerHTML = segs.map((sg, k) => { const st = stepState(t.steps[k]); return `<button class="mark ${st.cls}" style="left:${(sg.start / dur) * 100}%" data-step="${t.steps[k].i}" title="Step ${t.steps[k].i}: ${esc(t.steps[k].say)}" aria-label="Step ${t.steps[k].i}, ${st.cls === "ok" ? "fine" : st.cls === "warn" ? "unsure" : "problem"}">${st.sym}</button>`; }).join("");
-  let currentStep = -1;
+  currentStep = -1;
   const draw = () => {
     player.render(time);
     scrub.value = String(Math.round((time / dur) * 1000));
@@ -453,6 +497,8 @@ async function sessionPage(id, q) {
     const si = t.steps[k < 0 ? t.steps.length - 1 : k].i;
     if (si !== currentStep) {
       currentStep = si;
+      const jb = document.getElementById("stuck");
+      if (jb) { const at = t.metrics?.stuckStep === si; jb.disabled = at; jb.textContent = at ? `At the stuck step (${si})` : "Jump to stuck step"; }
       document.querySelectorAll("[data-step]").forEach((b) => b.dataset.step == si ? b.setAttribute("aria-current", "step") : b.removeAttribute("aria-current"));
       const li = document.querySelector(`#transcript [data-step="${si}"]`);
       if (li && playing) li.scrollIntoView({ block: "nearest" });
@@ -532,9 +578,9 @@ const passRate = (r) => (r ? `${r.pass}/${r.n}` : "–");
 
 async function personasPage() {
   crumbs([["Personas", ""]]);
-  const ps = await api("/api/personas");
+  const ps = await api(`/api/personas${sq()}`);
   const studies = [...new Set(ps.flatMap((x) => x.studies))].sort();
-  app.innerHTML = `<div class="pagehead"><div><h1>Personas</h1><p class="meta">Each persona is a way of perceiving, an input method, a knowledge level, a patience budget and a voice. Click one to see its sessions and checks.</p></div>
+  app.innerHTML = `<div class="pagehead"><div><h1>Personas</h1><p class="meta">Each persona is a way of perceiving, an input method, a knowledge level, a patience budget and a voice. Session counts are for ${esc(studyName())}. Click one to see its sessions and checks.</p></div>
     <div class="row"><a class="btn primary" href="#/personas/new">＋ New persona</a></div></div><div id="t-personas"></div>`;
   MasterTable(document.getElementById("t-personas"), {
     id: "personas", noun: "personas", label: "personas", rows: ps, rowId: (r) => r.persona.id,
@@ -543,10 +589,11 @@ async function personasPage() {
     filters: [
       { key: "modality", label: "Input", options: Object.entries(MODALITY), test: (r, v) => r.persona.modality === v },
       { key: "vision", label: "Vision", options: [["typical", "Typical"], ["cvd", "Color vision deficiency"], ["low", "Low vision / blur"], ["blind", "Blind"]], test: (r, v) => v === "typical" ? r.persona.modality !== "screen-reader" && !r.persona.perception.transforms.length : v === "cvd" ? r.persona.perception.transforms.some((x) => x.type === "cvd") : v === "low" ? r.persona.perception.transforms.some((x) => x.type === "blur") : r.persona.modality === "screen-reader" },
+      { key: "member", label: "In project", options: [["yes", `In ${studyName()}`], ["no", `Not in ${studyName()}`]], test: (r, v) => (v === "yes" ? r.inStudy : !r.inStudy) },
       { key: "study", label: "Study", options: studies.map((x) => [x, x]), test: (r, v) => r.studies.includes(v) },
     ],
     columns: [
-      { key: "name", label: "Persona", value: (r) => r.persona.name, render: (r) => `${esc(r.persona.name)}${r.persona.role === "control" ? ` <span class="chip">control</span>` : ""}` },
+      { key: "name", label: "Persona", value: (r) => r.persona.name, render: (r) => `${esc(r.persona.name)}${r.persona.role === "control" ? ` <span class="chip">control</span>` : ""}${r.inStudy ? "" : ` <span class="chip" title="Not in this project">not in project</span>`}` },
       { key: "who", label: "Who", wrap: true, value: (r) => r.persona.summary, render: (r) => `<span class="clamp2" title="${esc(r.persona.summary)}">${esc(r.persona.summary)}</span>` },
       { key: "modality", label: "Input", value: (r) => r.persona.modality, render: (r) => esc(MODALITY[r.persona.modality]) },
       { key: "vision", label: "Vision", value: (r) => visionText(r.persona), render: (r) => esc(visionText(r.persona)) },

@@ -20,15 +20,13 @@
       <a href="#/monitor" data-nav="monitor"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Monitor</a>
       <a href="#/calibration" data-nav="calibration"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Calibration</a>
     </nav>
-    <div class="side-foot">
-      <label for="study" class="k">Study</label>
-      <select id="study"></select>
-      <p class="meta" id="side-meta"></p>
-    </div>
+    <div class="side-foot"><p class="meta" id="side-meta"></p></div>
   </aside>
   <div class="content">
     <header class="topbar">
       <button id="menu" class="menu-btn" aria-controls="side" aria-expanded="false" aria-label="Open navigation">☰</button>
+      <label class="study-pick"><span class="k">Project</span><select id="study" aria-label="Project"></select></label>
+      <span class="topbar-sep" aria-hidden="true"></span>
       <nav aria-label="Breadcrumb" id="crumbs" class="crumbs"></nav>
     </header>
     <main id="app" tabindex="-1"></main>

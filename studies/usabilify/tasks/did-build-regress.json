@@ -1,0 +1,16 @@
+{
+  "id": "did-build-regress",
+  "goal": "Yesterday\u2019s build of Acme Desk was tested and so was the one before it. Did anything get worse between the two runs? Find out which persona and task, if any, regressed.",
+  "start": "/#/",
+  "success": {
+    "kind": "js",
+    "expr": "/^#\\/run\\/acme\\/[^?]+\\?baseline=/.test(location.hash) || (/^#\\/?$/.test(location.hash) && !!document.querySelector('.tile.hero.good, .tile.hero.bad'))"
+  },
+  "baseline": {
+    "steps": 1,
+    "path": [
+      "/"
+    ]
+  },
+  "maxSteps": 20
+}

@@ -1,6 +1,6 @@
 // Creating and editing personas from the dashboard: validation, saving, study membership,
 // and previews of what a persona sees and how it sounds.
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium, type Browser } from "playwright";
@@ -84,7 +84,7 @@ export async function previewPersona(raw: unknown, studyId: string, taskId?: str
 }
 
 /** Synthesise one line in a voice (cached). Returns a path under .cache served by the dashboard. */
-export function previewVoice(voice: string, speed: number, text: string): string {
+export async function previewVoice(voice: string, speed: number, text: string): Promise<string> {
   if (!VOICES.some(([v]) => v === voice)) throw new Error("unknown voice");
   const id = sha(`${voice}|${speed}|${text}`);
   const dir = join(ROOT, ".cache", "voice-preview");
@@ -92,12 +92,12 @@ export function previewVoice(voice: string, speed: number, text: string): string
   if (existsSync(out)) return `.cache/voice-preview/${id}.wav`;
   mkdirSync(dir, { recursive: true });
   if (existsSync(ANIM_PY)) {
-    const r = spawnSync(ANIM_PY, [join(ROOT, "src/replay/tts.py"), dir], { input: JSON.stringify([{ id, text: text.slice(0, 300), voice, speed }]), encoding: "utf8", timeout: 180_000 });
-    if (r.status === 0 && existsSync(out)) return `.cache/voice-preview/${id}.wav`;
+    const ok = await new Promise<boolean>((resolve) => { const p = spawn(ANIM_PY, [join(ROOT, "src/replay/tts.py"), dir], { stdio: ["pipe", "ignore", "ignore"] }); p.on("close", (c) => resolve(c === 0)); p.stdin.end(JSON.stringify([{ id, text: text.slice(0, 300), voice, speed }])); });
+    if (ok && existsSync(out)) return `.cache/voice-preview/${id}.wav`;
   }
   const aiff = join(dir, `${id}.aiff`);
-  spawnSync("say", ["-o", aiff, text.slice(0, 300)]);
-  spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, out]);
+  await new Promise((r) => spawn("say", ["-o", aiff, text.slice(0, 300)]).on("close", r));
+  await new Promise((r) => spawn("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, out]).on("close", r));
   if (!existsSync(out)) throw new Error("voice synthesis failed");
   return `.cache/voice-preview/${id}.wav`;
 }

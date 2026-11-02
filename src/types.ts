@@ -48,6 +48,8 @@ export const Study = z.object({
   tasks: z.array(z.string()),
   personas: z.array(z.string()),
   block: z.array(z.string()).default([]),
+  setup: z.string().optional(),   // module in the study dir; default export runs on each fresh browser context (sign-in, routes)
+  ready: z.string().optional(),   // JS expression that is true once the start page has really rendered
 });
 export type Study = z.infer<typeof Study>;
 

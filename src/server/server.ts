@@ -82,6 +82,41 @@ function sessionRows(study?: string | null, run?: string | null) {
   return listStudies().filter((st) => !study || st === study).flatMap((st) => listRuns(st).filter((r) => !run || r === run).flatMap((r) => loadSessions(st, r).map((t) => ({ ...summary(t), study: st, run: r, ts: t.ts, durationMs: t.durationMs }))));
 }
 
+
+/** The clearest replay for an issue: a session where the persona failed, else the highest-severity finding with a quote. */
+function withExamples(issues: any[], sessions: Trace[]) {
+  const by = new Map(sessions.map((t) => [t.id, t]));
+  const rank = { high: 3, medium: 2, low: 1 } as Record<string, number>;
+  const used = new Set<string>(); // vary the examples down the list: two issues shouldn't both say "watch Kim give up" on the same session
+  return issues.map((i) => {
+    const fs = [...i.findings].sort((a: any, b: any) => {
+      const fa = by.get(a.session)?.outcome.kind !== "completed" ? 1 : 0, fb = by.get(b.session)?.outcome.kind !== "completed" ? 1 : 0;
+      return (fb - fa) || ((b.evidence ? 1 : 0) - (a.evidence ? 1 : 0)) || ((rank[by.get(b.session)?.findings?.find((x: any) => x.key === b.key)?.severity ?? "low"] ?? 0) - (rank[by.get(a.session)?.findings?.find((x: any) => x.key === a.key)?.severity ?? "low"] ?? 0));
+    });
+    const f = fs.find((x: any) => !used.has(x.session) && by.get(x.session)?.outcome.kind !== "completed") ?? fs[0];
+    if (f) used.add(f.session);
+    const t = f ? by.get(f.session) : undefined;
+    return { ...i, example: f ? { session: f.session, atStep: f.atStep, persona: f.persona, evidence: f.evidence, outcome: t?.outcome.kind ?? null, unaware: t?.events.some((e) => e.type === "unaware-of-success") ?? false } : null };
+  });
+}
+
+/** How a persona × task cell changed between two runs. */
+function cellChanges(grid: ReturnType<typeof buildGrid>, prevGrid: ReturnType<typeof buildGrid>, ss: Trace[], prevSs: Trace[]) {
+  const unaware = (ids: string[], pool: Trace[]) => ids.filter((id) => { const t = pool.find((x) => x.id === id); return t && t.outcome.kind === "completed" && t.events.some((e) => e.type === "unaware-of-success"); }).length;
+  const label = (c: any, pool: Trace[]) => { const failed = c.n - c.completed, un = unaware(c.sessions, pool); return failed === 0 && un === 0 ? "completed" : failed === 0 ? (c.n === 1 ? "completed, didn't know" : `${un} of ${c.n} completed without knowing`) : c.n === 1 ? (pool.find((x) => x.id === c.sessions[0])?.outcome.kind === "gave-up" ? "gave up" : pool.find((x) => x.id === c.sessions[0])?.outcome.kind === "wrong-done" ? "thought done, wasn't" : "failed") : `${failed} of ${c.n} failed`; };
+  const score = (c: any, pool: Trace[]) => c.failRate + (unaware(c.sessions, pool) / c.n) * 0.5;
+  const out: { persona: string; task: string; was: string; now: string; dir: "worse" | "better"; session: string }[] = [];
+  for (const c of grid) {
+    const b = prevGrid.find((x) => x.persona === c.persona && x.task === c.task);
+    if (!b) continue;
+    const d = score(c, ss) - score(b, prevSs);
+    if (Math.abs(d) < 1e-9) continue;
+    const failedSession = c.sessions.find((id) => ss.find((x) => x.id === id)?.outcome.kind !== "completed") ?? c.sessions[0];
+    out.push({ persona: c.persona, task: c.task, was: label(b, prevSs), now: label(c, ss), dir: d > 0 ? "worse" : "better", session: failedSession });
+  }
+  return out;
+}
+
 function overview(study: string) {
   const runs = runRows().filter((r) => r.study === study).reverse();
   const latest = runs.filter((r) => r.sessions >= 5).at(-1) ?? runs.at(-1);
@@ -99,11 +134,15 @@ function overview(study: string) {
   const kinds: Record<string, number> = {};
   for (const i of issues?.issues ?? []) kinds[i.kind] = (kinds[i.kind] ?? 0) + i.sessions.length;
   const all = runs.flatMap((r) => loadSessions(study, r.id));
+  const prevSs = prev ? loadSessions(study, prev.id) : [];
+  const grid = buildGrid(ss);
+  const changes = prev ? cellChanges(grid, buildGrid(prevSs), ss, prevSs) : [];
+  const struggling = st.personas.filter((p) => grid.some((c) => c.persona === p && c.completed < c.n));
   return {
-    study: st, runs, latest, prev,
+    study: st, runs, latest, prev, changes, struggling,
     totals: { runs: runs.length, sessions: all.length, costUsd: runs.reduce((a, r) => a + r.costUsd, 0), personas: st.personas.length, tasks: st.tasks.length },
-    grid: buildGrid(ss), byPersona, issueKinds: Object.entries(kinds).map(([kind, n]) => ({ kind, n })).sort((a, b) => b.n - a.n),
-    topIssues: (issues?.issues ?? []).slice(0, 6), recall: issues?.recall ?? null,
+    grid, byPersona, issueKinds: Object.entries(kinds).map(([kind, n]) => ({ kind, n })).sort((a, b) => b.n - a.n),
+    topIssues: withExamples((issues?.issues ?? []).slice(0, 6), ss), recall: issues?.recall ?? null,
     attention: ss.filter((t) => t.outcome.kind !== "completed" || t.events.some((e) => e.type === "unaware-of-success")).map(summary),
     signals: evaluateSignals(study).signals,
     personas: Object.fromEntries(st.personas.map((id) => [id, loadPersona(id)])),
@@ -135,22 +174,24 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   if (p === "/favicon.ico") { res.writeHead(204); res.end(); return; }
 
 
-  if (p === "/api/runs") return json(res, runRows());
+  const studyQ = url.searchParams.get("study");
+  const scoped = (st: string) => !studyQ || st === studyQ;
+  if (p === "/api/runs") return json(res, runRows().filter((r) => scoped(r.study)));
   if (p === "/api/sessions") return json(res, sessionRows(url.searchParams.get("study"), url.searchParams.get("run")));
   if (p === "/api/overview") { const st = url.searchParams.get("study") ?? listStudies()[0]; return st ? json(res, overview(st)) : json(res, { empty: true }); }
   if (p === "/api/issues") {
-    // Issues from the latest analyzed run of each study.
-    return json(res, listStudies().flatMap((st) => {
+    // Issues from the latest analyzed run of each study (or the one asked for).
+    return json(res, listStudies().filter(scoped).flatMap((st) => {
       const r = listRuns(st).filter((x) => existsSync(join(runDir(st, x), "issues.json"))).at(-1);
       if (!r) return [];
       const personas = Object.fromEntries(loadStudy(st).personas.map((id) => [id, loadPersona(id).name]));
-      return readJson(join(runDir(st, r), "issues.json")).issues.map((i: any) => ({ ...i, study: st, run: r, personaNames: i.personas.map((p: string) => personas[p] ?? p) }));
+      return withExamples(readJson(join(runDir(st, r), "issues.json")).issues, loadSessions(st, r)).map((i: any) => ({ ...i, study: st, run: r, personaNames: i.personas.map((p: string) => personas[p] ?? p) }));
     }));
   }
   if (p === "/api/monitor") {
     const alertsFile = join(ROOT, "monitor", "alerts.jsonl");
     const alerts = existsSync(alertsFile) ? readFileSync(alertsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)).reverse().slice(0, 100) : [];
-    return json(res, { studies: listStudies().map((st) => ({ id: st, ...evaluateSignals(st) })), alerts, config: readJson(join(ROOT, "monitor", "signals.json")) });
+    return json(res, { studies: listStudies().filter(scoped).map((st) => ({ id: st, ...evaluateSignals(st) })), alerts: alerts.filter((a) => scoped(a.study)), config: readJson(join(ROOT, "monitor", "signals.json")) });
   }
   if (p === "/api/studies") return json(res, listStudies().map((st) => {
     const s = loadStudy(st);
@@ -165,7 +206,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
     const study = loadStudy(st);
     return json(res, {
       study, run: readJson(join(runDir(st, r), "run.json")), grid: buildGrid(sessions), sessions: sessions.map(summary),
-      issues: existsSync(issuesFile) ? readJson(issuesFile) : null, known: existsSync(knownFile) ? readJson(knownFile).issues : [],
+      issues: existsSync(issuesFile) ? { ...readJson(issuesFile), issues: withExamples(readJson(issuesFile).issues, sessions) } : null, known: existsSync(knownFile) ? readJson(knownFile).issues : [],
       signals: evaluateSignals(st).signals, personas: Object.fromEntries(study.personas.map((id) => [id, loadPersona(id)])), tasks: Object.fromEntries(study.tasks.map((id) => [id, loadTask(st, id)])),
     });
   }
@@ -208,9 +249,10 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (p === "/api/personas" && req.method === "GET") {
-    const all = listStudies().flatMap((st) => listRuns(st).flatMap((r) => loadSessions(st, r)));
+    // Stats are scoped to the study when one is given; the persona list itself is global.
+    const all = listStudies().filter(scoped).flatMap((st) => listRuns(st).flatMap((r) => loadSessions(st, r)));
     const tur = turingResults();
-    return json(res, listPersonas().map((id) => personaStats(id, all, tur)));
+    return json(res, listPersonas().map((id) => ({ ...personaStats(id, all, tur), inStudy: !studyQ || loadStudy(studyQ).personas.includes(id) })));
   }
   if (p === "/api/personas" && req.method === "POST") {
     const b = await body(req);
@@ -234,7 +276,7 @@ async function route(req: IncomingMessage, res: ServerResponse) {
   }
   if (p === "/api/voice-preview" && req.method === "POST") {
     const b = await body(req);
-    try { return json(res, { url: "/" + previewVoice(b.voice, Number(b.speed) || 1, String(b.text || "Hm. Where would that be?")) }); } catch (e) { return json(res, { error: (e as Error).message }, 400); }
+    try { return json(res, { url: "/" + (await previewVoice(b.voice, Number(b.speed) || 1, String(b.text || "Hm. Where would that be?"))) }); } catch (e) { return json(res, { error: (e as Error).message }, 400); }
   }
   if (p === "/api/persona-draft" && req.method === "POST") {
     const b = await body(req);

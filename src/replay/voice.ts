@@ -1,5 +1,5 @@
 // Voice a session's monologue in the persona's voice, then mix one track laid out by the replay timeline.
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { findSession, loadPersona } from "../load.js";
@@ -35,13 +35,25 @@ function writeWav(p: string, pcm: Int16Array) {
   writeFileSync(p, Buffer.concat([h, Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength)]));
 }
 
+/** Run a command without blocking the event loop (the dashboard keeps serving while Kokoro works). */
+function run(cmd: string, args: string[], input?: string, timeoutMs = 600_000): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const p = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    const timer = setTimeout(() => p.kill("SIGTERM"), timeoutMs);
+    p.stdout.on("data", (d) => (stdout += d)); p.stderr.on("data", (d) => (stderr += d));
+    p.on("close", (status) => { clearTimeout(timer); resolve({ status, stdout, stderr }); });
+    if (input != null) p.stdin.end(input); else p.stdin.end();
+  });
+}
+
 /** macOS fallback when Kokoro isn't available. */
-function sayFallback(dir: string, items: { id: string; text: string }[]): Record<string, number> {
+async function sayFallback(dir: string, items: { id: string; text: string }[]): Promise<Record<string, number>> {
   const d: Record<string, number> = {};
   for (const it of items) {
     const aiff = join(dir, `${it.id}.aiff`), wav = join(dir, `${it.id}.wav`);
-    spawnSync("say", ["-o", aiff, it.text]);
-    spawnSync("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, "-ar", String(SR), "-ac", "1", "-sample_fmt", "s16", wav]);
+    await run("say", ["-o", aiff, it.text]);
+    await run("ffmpeg", ["-y", "-loglevel", "error", "-i", aiff, "-ar", String(SR), "-ac", "1", "-sample_fmt", "s16", wav]);
     d[it.id] = readWav(wav).length / SR;
   }
   return d;
@@ -60,11 +72,11 @@ export async function ensureVoice(dir: string, t: Trace): Promise<VoiceInfo> {
   mkdirSync(vdir, { recursive: true });
   let durations: Record<string, number> = {}, engine = `kokoro:${p.voice.tts}`;
   if (existsSync(ANIM_PY)) {
-    const r = spawnSync(ANIM_PY, [join(ROOT, "src/replay/tts.py"), vdir], { input: JSON.stringify(items), encoding: "utf8", maxBuffer: 1 << 24, timeout: 600_000 });
+    const r = await run(ANIM_PY, [join(ROOT, "src/replay/tts.py"), vdir], JSON.stringify(items));
     if (r.status === 0) durations = JSON.parse(r.stdout.trim().split("\n").pop()!);
     else console.error(`kokoro failed, using macOS say: ${r.stderr.slice(-300)}`);
   }
-  if (!Object.keys(durations).length) { durations = sayFallback(vdir, items); engine = "say"; }
+  if (!Object.keys(durations).length) { durations = await sayFallback(vdir, items); engine = "say"; }
   const info = { hash, engine, durations };
   writeJson(infoFile, info);
   return info;

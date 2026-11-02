@@ -1,10 +1,11 @@
 // One persona attempting one task once: perceive → transform → think/speak → act → record.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Browser, Page } from "playwright";
 import { openBrain, type Block } from "../brain.js";
 import type { Action, Persona, Step, Study, Task, Trace } from "../types.js";
-import { newId, PERSONAS, round, sha, writeJson } from "../util.js";
+import { newId, PERSONAS, round, sha, STUDIES, writeJson } from "../util.js";
 import { ALLOWED, perform } from "./act.js";
 import { parseReply, promptHash, systemPrompt, type ActorReply } from "./actor.js";
 import { initialMood, reactionMs, updateMood } from "./mood.js";
@@ -13,7 +14,10 @@ import { describeTransforms, pixelDiff, transformPng } from "./transform.js";
 
 export interface SessionOpts { brain: string; runDir: string; runId: string; trial: number; appVersion: string; log?: (s: string) => void; trace?: boolean }
 
-const pathOf = (url: string) => { try { return new URL(url).pathname; } catch { return url; } };
+/** The route a person is on: the path, or the hash route for apps that route with `#/` (Flutter, HashRouter). */
+const pathOf = (url: string) => {
+  try { const u = new URL(url); return u.hash.startsWith("#/") ? u.hash.slice(1).split("?")[0] : u.pathname; } catch { return url; }
+};
 
 export async function checkSuccess(page: Page, task: Task): Promise<boolean> {
   const s = task.success;
@@ -49,6 +53,7 @@ export async function runSession(browser: Browser, study: Study, task: Task, per
   const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.deviceScaleFactor, isMobile: vp.isMobile, hasTouch: vp.hasTouch });
   await ctx.addInitScript(INIT_SCRIPT);
   for (const b of study.block) await ctx.route(new RegExp(b), (r) => r.abort());
+  if (study.setup) await (await import(pathToFileURL(join(STUDIES, study.id, study.setup)).href)).default({ context: ctx, study, task, persona });
   if (o.trace !== false) await ctx.tracing.start({ screenshots: true, snapshots: true });
   const page = await ctx.newPage();
   const sys = systemPrompt(persona, task, vp.width, vp.height);
@@ -72,6 +77,7 @@ export async function runSession(browser: Browser, study: Study, task: Task, per
 
   try {
     await page.goto(new URL(task.start, study.baseUrl).href, { waitUntil: "networkidle" });
+    if (study.ready) await page.waitForFunction(study.ready, null, { timeout: 30000 });
     visited.add(pathOf(page.url()));
     for (let i = 0; i < task.maxSteps; i++) {
       const stepT = (Date.now() - t0) / 1000;

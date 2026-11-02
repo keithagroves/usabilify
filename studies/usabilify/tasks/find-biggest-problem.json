@@ -1,0 +1,17 @@
+{
+  "id": "find-biggest-problem",
+  "goal": "A usability test run on Acme Desk finished overnight. Find the single most serious problem it found, and open a replay of one of the people who hit it, so you can show the team at standup.",
+  "start": "/#/",
+  "success": {
+    "kind": "js",
+    "expr": "/^#\\/session\\/(ss-20261023-115139-5ece|ss-20261023-115139-6f3e|ss-20261023-115217-89f1|ss-20261023-115219-bc7b|ss-20261023-115319-a086|ss-20261023-115321-fb5c|ss-20261023-115349-9e6c|ss-20261023-115357-c027|ss-20261023-115139-2554|ss-20261023-115139-db69|ss-20261023-115216-825a)/.test(location.hash)"
+  },
+  "baseline": {
+    "steps": 2,
+    "path": [
+      "/",
+      "/issues"
+    ]
+  },
+  "maxSteps": 20
+}

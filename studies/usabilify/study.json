@@ -1,0 +1,16 @@
+{
+  "id": "usabilify",
+  "name": "Usabilify dashboard (dogfood)",
+  "baseUrl": "http://localhost:4310",
+  "tasks": [
+    "find-biggest-problem",
+    "did-build-regress",
+    "watch-screenreader-giveup"
+  ],
+  "personas": [
+    "alex-expert",
+    "nia-newpm"
+  ],
+  "block": [],
+  "ready": "!!document.querySelector(\".tiles, .empty-state\")"
+}

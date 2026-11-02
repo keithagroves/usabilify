@@ -7,6 +7,7 @@ function MasterTable(host, o) {
   const storeKey = `mt:${o.id}`;
   let st = { q: "", f: {}, sort: o.sort ?? { key: o.columns[0].key, dir: "desc" } };
   try { st = { ...st, ...JSON.parse(localStorage.getItem(storeKey) || "{}") }; } catch {}
+  if (o.initial) st = { ...st, ...o.initial, f: { ...(o.initial.f ?? {}) } }; // a link arrived with filters: they win over remembered ones
   const selected = new Set();
   const save = () => { try { localStorage.setItem(storeKey, JSON.stringify(st)); } catch {} };
 
@@ -20,7 +21,7 @@ function MasterTable(host, o) {
       <span class="mt-count" aria-live="polite"></span>
     </div>
     <div class="mt-scroll"><table><thead><tr>
-      ${o.selectable ? `<th scope="col" style="width:32px"><span class="sr">Select</span></th>` : ""}
+      ${o.selectable ? `<th scope="col" style="width:44px"><span class="sr">Select</span></th>` : ""}
       ${o.columns.map((c) => `<th scope="col" class="${c.num ? "num" : ""}" data-col="${c.key}" aria-sort="none" ${c.title ? `title="${esc(c.title)}"` : ""}><button type="button">${esc(c.label)}</button></th>`).join("")}
     </tr></thead><tbody></tbody></table></div></div>`;
   const tbody = host.querySelector("tbody"), count = host.querySelector(".mt-count"), actions = host.querySelector(".mt-actions");
@@ -41,7 +42,7 @@ function MasterTable(host, o) {
     tbody.innerHTML = rs.length ? rs.map((r) => {
       const id = o.rowId(r), href = o.href?.(r);
       return `<tr data-id="${esc(id)}" ${href ? `data-href="${esc(href)}"` : ""} class="${selected.has(id) ? "sel" : ""}">
-        ${o.selectable ? `<td><input type="checkbox" aria-label="Select ${esc(id)}" ${selected.has(id) ? "checked" : ""}></td>` : ""}
+        ${o.selectable ? `<td class="sel-cell"><input type="checkbox" aria-label="Select ${esc(id)}" ${selected.has(id) ? "checked" : ""}></td>` : ""}
         ${o.columns.map((c, i) => `<td class="${c.num ? "num" : ""} ${c.wrap ? "wrap" : ""}">${i === 0 && href ? `<a href="${esc(href)}">${c.render ? c.render(r) : esc(r[c.key])}</a>` : c.render ? c.render(r) : esc(r[c.key] ?? "–")}</td>`).join("")}
       </tr>`;
     }).join("") : `<tr><td class="empty" colspan="${o.columns.length + (o.selectable ? 1 : 0)}">${esc(o.empty ?? "Nothing matches.")}</td></tr>`;
@@ -59,7 +60,8 @@ function MasterTable(host, o) {
   }));
   tbody.addEventListener("click", (e) => {
     const tr = e.target.closest("tr[data-id]"); if (!tr) return;
-    if (e.target.matches("input[type=checkbox]")) { const id = tr.dataset.id; e.target.checked ? selected.add(id) : selected.delete(id); tr.classList.toggle("sel", e.target.checked); draw(); return; }
+    const cb = e.target.matches("input[type=checkbox]") ? e.target : e.target.matches("td.sel-cell") ? e.target.querySelector("input[type=checkbox]") : null;
+    if (cb) { if (cb !== e.target) cb.checked = !cb.checked; const id = tr.dataset.id; cb.checked ? selected.add(id) : selected.delete(id); tr.classList.toggle("sel", cb.checked); draw(); return; }
     if (e.target.closest("a,button,input,select")) return;
     if (tr.dataset.href) location.hash = tr.dataset.href.replace(/^#/, "");
   });

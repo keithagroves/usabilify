@@ -1,0 +1,18 @@
+{
+  "id": "watch-screenreader-giveup",
+  "goal": "Ray, who uses a screen reader, gave up trying to add a teammate in Acme Desk. Watch what happened to him.",
+  "start": "/#/",
+  "success": {
+    "kind": "js",
+    "expr": "location.hash.startsWith(\"#/session/ss-20261023-115219-bc7b\")"
+  },
+  "baseline": {
+    "steps": 3,
+    "path": [
+      "/",
+      "/sessions",
+      "/session/ss-20261023-115219-bc7b"
+    ]
+  },
+  "maxSteps": 20
+}

@@ -38,6 +38,17 @@ Requirements: Node 22, Google Chrome, the `claude` CLI logged in (the personas r
 
 The Personas page lists every persona with its input method, vision, device, patience, success rate and checks. **New persona** opens a form for who they are, how they use the app, vision, knowledge, patience, voice and which studies they belong to. It can draft the fields from a one-line description with Claude, and it previews the study's start page through the persona's eyes and plays sample lines in its voice. Edits apply to the next run; past sessions keep the persona hash they ran with.
 
+## Testing Usabilify with Usabilify
+
+`studies/usabilify` points the personas at this dashboard with three product-manager tasks: find the most serious problem, find out whether the latest build regressed, and watch a specific persona give up. It's how the overview got its shape: the first run showed every persona leaving the overview to answer "did anything get worse?", so the overview now leads with that answer. Run it after changing the dashboard:
+
+```sh
+npx tsx src/cli.ts serve &                      # the personas use the live dashboard
+npx tsx src/cli.ts run usabilify --trials 2
+npx tsx src/cli.ts analyze usabilify <run>
+npx tsx src/cli.ts report usabilify <run> --baseline <previous run>
+```
+
 ## Layout
 
 - `personas/<id>/persona.json` and `voice.md`: who each persona is, how it perceives and acts, its patience and its voice.
@@ -56,4 +67,13 @@ npx tsx src/cli.ts init myapp --url http://localhost:3000
 
 It asks for a name, an optional launch command, which personas to use, and a first task (goal, start path, success check), then writes `studies/myapp/` with a README on writing tasks. Pass flags to skip the questions. A task's `success` is a JS expression, URL path prefix, or text that must appear on the page.
 
-Known limits on real apps: sessions start with no credentials (point the start path past any login, or use a build that auto-signs-in a test user), URL success checks read the path rather than the hash, and the screen-reader persona needs a DOM accessibility tree (Flutter needs semantics enabled).
+Two optional study fields cover apps that need more than a URL:
+
+- `setup`: a module in the study directory whose default export gets `{ context, study, task, persona }` for each fresh browser context, before the page opens. Use it to sign in (add an init script that plants a session), fake writes with `context.route`, or turn on an accessibility tree.
+- `ready`: a JS expression to wait for after the start page loads, for apps whose first frame comes well after `networkidle` (Flutter: `window.__rmReady === true` or similar).
+
+Hash routes (`#/teacher/students`) count as the path for URL success checks, wrong turns and baselines.
+
+`studies/rocket` is a worked example against a Flutter web app on a hosted staging site: its `setup.mjs` signs in with a password grant, turns on Flutter semantics, and answers every write with a fake recorded on `window.__usabWrites`, which the tasks' success checks read.
+
+Known limits on real apps: without a `setup`, sessions start with no credentials, and the screen-reader persona needs a DOM accessibility tree (Flutter needs semantics enabled).
